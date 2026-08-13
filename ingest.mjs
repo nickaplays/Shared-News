@@ -188,9 +188,17 @@ export async function runIngest({
         );
         feedsSucceeded += 1;
         for (const item of parsed?.items ?? []) {
-          const article = toArticle(item, feed, processedAt);
-          if (article) {
-            candidates.push(article);
+          try {
+            const article = toArticle(item, feed, processedAt);
+            if (article) {
+              candidates.push(article);
+            }
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            console.error(
+              `Shared News item skipped in feed "${feed.id}": ${message}`,
+            );
           }
         }
       } catch (error) {

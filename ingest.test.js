@@ -546,6 +546,73 @@ describe("runIngest", () => {
     assert.equal(articles[0].category, "youtube");
   });
 
+  test("reports articlesUpdated when re-ingest enriches existing rows", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "shared-news-update-"));
+    const articlesPath = path.join(dir, "articles.jsonl");
+    await writeFile(
+      path.join(dir, "sources.json"),
+      JSON.stringify({
+        feeds: [
+          {
+            id: "enrich-feed",
+            label: "Enrich",
+            engine: "roundup",
+            kind: "youtube",
+            url: "https://feeds.example/enrich",
+            enabled: true,
+          },
+        ],
+      }),
+    );
+    await writeArticlesJsonl(articlesPath, [
+      {
+        url: "https://www.youtube.com/watch?v=abc123",
+        title: "Video title",
+        date: "2026-08-11T00:00:00.000Z",
+        source: "YouTube",
+        sourceId: "enrich-feed",
+        engine: "roundup",
+        summary: "",
+        tags: [],
+        category: "youtube",
+        processedAt: "2026-08-11T00:00:00.000Z",
+      },
+    ]);
+
+    const result = await runIngest({
+      newsDir: dir,
+      fetchFeed: async () => ({
+        items: [
+          {
+            title: "Video title",
+            link: "https://www.youtube.com/watch?v=abc123",
+            isoDate: "2026-08-11T00:00:00.000Z",
+            mediaGroup: {
+              "media:thumbnail": [
+                {
+                  $: {
+                    url: "https://i.ytimg.com/vi/abc123/hqdefault.jpg",
+                    width: "480",
+                  },
+                },
+              ],
+              "media:description": "Filled on re-ingest",
+            },
+          },
+        ],
+      }),
+    });
+
+    assert.equal(result.articlesInserted, 0);
+    assert.equal(result.articlesUpdated, 1);
+    const articles = await readArticlesJsonl(articlesPath);
+    assert.equal(articles[0].summary, "Filled on re-ingest");
+    assert.equal(
+      articles[0].imageUrl,
+      "https://i.ytimg.com/vi/abc123/hqdefault.jpg",
+    );
+  });
+
   test("records all-feed failure without replacing articles", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "shared-news-failure-"));
     const articlesPath = path.join(dir, "articles.jsonl");

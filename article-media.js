@@ -1,7 +1,15 @@
 const IMG_SRC_RE = /<img[^>]+src=["']([^"']+)["']/i;
+const IMAGE_EXT_RE = /\.(jpe?g|png|webp|gif)(\?|$)/i;
+
+function xmlText(value) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && "_" in value) return String(value._ ?? "");
+  return String(value);
+}
 
 export function plainText(value, maxLength) {
-  const text = String(value ?? "")
+  const text = xmlText(value)
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -18,17 +26,18 @@ function firstHttps(url) {
 function mediaThumbUrl(mediaGroup) {
   const thumbs = mediaGroup?.["media:thumbnail"];
   if (!Array.isArray(thumbs) || thumbs.length === 0) return undefined;
-  // Prefer last entry if widths differ; else first
-  let best = thumbs[0];
-  let bestW = Number(best?.$?.width) || 0;
+  let bestUrl;
+  let bestW = 0;
   for (const t of thumbs) {
+    const url = firstHttps(t?.$?.url);
+    if (!url) continue;
     const w = Number(t?.$?.width) || 0;
-    if (w >= bestW) {
-      best = t;
+    if (!bestUrl || w >= bestW) {
+      bestUrl = url;
       bestW = w;
     }
   }
-  return firstHttps(best?.$?.url);
+  return bestUrl;
 }
 
 export function extractImageUrl(item) {
@@ -36,9 +45,15 @@ export function extractImageUrl(item) {
   if (fromMedia) return fromMedia;
 
   const enc = item?.enclosure;
-  if (enc && String(enc.type || "").startsWith("image/")) {
-    const u = firstHttps(enc.url);
-    if (u) return u;
+  if (enc) {
+    const type = String(enc.type || "");
+    const isImage =
+      type.startsWith("image/") ||
+      (!type && IMAGE_EXT_RE.test(String(enc.url || "")));
+    if (isImage) {
+      const u = firstHttps(enc.url);
+      if (u) return u;
+    }
   }
 
   if (Array.isArray(item?.mediaThumbnail) && item.mediaThumbnail[0]) {
@@ -60,7 +75,8 @@ export function extractImageUrl(item) {
 
 export function extractSummary(item, maxLength) {
   const mediaDesc = item?.mediaGroup?.["media:description"];
-  const mediaText = Array.isArray(mediaDesc) ? mediaDesc[0] : mediaDesc;
+  const mediaRaw = Array.isArray(mediaDesc) ? mediaDesc[0] : mediaDesc;
+  const mediaText = mediaRaw != null ? xmlText(mediaRaw) : "";
   const raw =
     mediaText ||
     item?.contentSnippet ||

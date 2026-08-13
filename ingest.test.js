@@ -105,6 +105,72 @@ describe("upsertArticles", () => {
     assert.equal(result.articles.length, 1);
   });
 
+  test("enriches missing imageUrl and empty summary without counting maxNew", () => {
+    const existing = [
+      {
+        url: "https://a.example/1",
+        title: "A",
+        date: "2026-01-01T00:00:00.000Z",
+        source: "T",
+        sourceId: "t",
+        engine: "roundup",
+        summary: "",
+        tags: [],
+        category: "youtube",
+        processedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ];
+    const incoming = [
+      {
+        ...existing[0],
+        summary: "Filled from media",
+        imageUrl: "https://i.ytimg.com/vi/x/hqdefault.jpg",
+      },
+    ];
+    const result = upsertArticles(existing, incoming, {
+      maxNew: 0,
+      maxRetain: 200,
+    });
+    assert.equal(result.inserted, 0);
+    assert.equal(result.updated, 1);
+    const row = result.articles.find((a) => a.url === "https://a.example/1");
+    assert.equal(row.summary, "Filled from media");
+    assert.equal(row.imageUrl, "https://i.ytimg.com/vi/x/hqdefault.jpg");
+  });
+
+  test("does not overwrite non-empty summary or existing imageUrl", () => {
+    const existing = [
+      {
+        url: "https://a.example/1",
+        title: "A",
+        date: "2026-01-01T00:00:00.000Z",
+        source: "T",
+        sourceId: "t",
+        engine: "roundup",
+        summary: "Keep me",
+        imageUrl: "https://cdn.example/old.jpg",
+        tags: [],
+        category: "rss",
+        processedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ];
+    const incoming = [
+      {
+        ...existing[0],
+        summary: "New",
+        imageUrl: "https://cdn.example/new.jpg",
+      },
+    ];
+    const result = upsertArticles(existing, incoming, {
+      maxNew: 8,
+      maxRetain: 200,
+    });
+    assert.equal(result.updated, 0);
+    const row = result.articles[0];
+    assert.equal(row.summary, "Keep me");
+    assert.equal(row.imageUrl, "https://cdn.example/old.jpg");
+  });
+
   test("respects maxNew and maxRetain", () => {
     const existing = [];
     const incoming = Array.from({ length: 10 }, (_, i) => ({
@@ -227,7 +293,7 @@ describe("runIngest", () => {
               title: "Newer",
               link: "https://example.com/newer",
               pubDate: "Tue, 11 Aug 2026 00:00:00 GMT",
-              content: "x".repeat(600),
+              content: "x".repeat(1600),
             },
           ],
         };
@@ -242,7 +308,7 @@ describe("runIngest", () => {
     const articles = await readArticlesJsonl(path.join(dir, "articles.jsonl"));
     assert.equal(articles.length, 2);
     assert.equal(articles[0].title, "Newer");
-    assert.equal(articles[0].summary.length, 500);
+    assert.equal(articles[0].summary.length, 1500);
     assert.equal(articles[0].category, "rss");
     assert.equal(articles[0].sourceId, "test-feed");
     assert.deepEqual(articles[0].tags, []);
@@ -431,6 +497,53 @@ describe("runIngest", () => {
     assert.equal(result.articlesInserted, 2);
     const articles = await readArticlesJsonl(path.join(dir, "articles.jsonl"));
     assert.equal(articles.length, 2);
+  });
+
+  test("extracts imageUrl and summary from YouTube-shaped mediaGroup item", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "shared-news-youtube-"));
+    await writeFile(
+      path.join(dir, "sources.json"),
+      JSON.stringify({
+        feeds: [
+          {
+            id: "yt-feed",
+            label: "YouTube",
+            engine: "roundup",
+            kind: "youtube",
+            url: "https://feeds.example/youtube",
+            enabled: true,
+          },
+        ],
+      }),
+    );
+
+    await runIngest({
+      newsDir: dir,
+      fetchFeed: async () => ({
+        items: [
+          {
+            title: "Video title",
+            link: "https://www.youtube.com/watch?v=abc123",
+            isoDate: "2026-08-11T00:00:00.000Z",
+            mediaGroup: {
+              "media:thumbnail": [
+                { $: { url: "https://i.ytimg.com/vi/abc123/hqdefault.jpg", width: "480" } },
+              ],
+              "media:description": "YouTube video description text",
+            },
+          },
+        ],
+      }),
+    });
+
+    const articles = await readArticlesJsonl(path.join(dir, "articles.jsonl"));
+    assert.equal(articles.length, 1);
+    assert.equal(
+      articles[0].imageUrl,
+      "https://i.ytimg.com/vi/abc123/hqdefault.jpg",
+    );
+    assert.equal(articles[0].summary, "YouTube video description text");
+    assert.equal(articles[0].category, "youtube");
   });
 
   test("records all-feed failure without replacing articles", async () => {

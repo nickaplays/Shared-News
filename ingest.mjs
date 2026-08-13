@@ -9,10 +9,18 @@ import {
   writeArticlesJsonl,
   upsertArticles,
 } from "./articles-store.js";
+import { extractImageUrl, extractSummary } from "./article-media.js";
 
-const MAX_SUMMARY_LENGTH = 500;
+const MAX_SUMMARY_LENGTH = 1500;
 const DEFAULT_FEED_TIMEOUT_MS = 20_000;
-const parser = new Parser();
+const parser = new Parser({
+  customFields: {
+    item: [
+      ["media:group", "mediaGroup"],
+      ["media:thumbnail", "mediaThumbnail", { keepArray: true }],
+    ],
+  },
+});
 
 export function parseIngestArgs(argv) {
   const values = Object.fromEntries(
@@ -68,37 +76,28 @@ function itemDate(item, fallback) {
   return Number.isNaN(date.getTime()) ? fallback : date.toISOString();
 }
 
-function itemSummary(item) {
-  const value =
-    item.contentSnippet ??
-    item.summary ??
-    item.content ??
-    item.description ??
-    "";
-  return String(value)
-    .replace(/<[^>]*>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, MAX_SUMMARY_LENGTH);
-}
-
 function toArticle(item, feed, processedAt) {
   const url = item.link ?? item.url ?? item.guid ?? item.id;
   if (!url) {
     return null;
   }
-  return {
+  const imageUrl = extractImageUrl(item);
+  const article = {
     url: String(url),
     title: String(item.title ?? "Untitled"),
     date: itemDate(item, processedAt),
     source: String(feed.label ?? feed.id),
     sourceId: String(feed.id),
     engine: String(feed.engine ?? "roundup"),
-    summary: itemSummary(item),
+    summary: extractSummary(item, MAX_SUMMARY_LENGTH),
     tags: [],
     category: String(feed.kind),
     processedAt,
   };
+  if (imageUrl) {
+    article.imageUrl = imageUrl;
+  }
+  return article;
 }
 
 async function writeLastRun(newsDir, value) {

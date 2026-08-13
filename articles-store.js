@@ -68,18 +68,39 @@ export function upsertArticles(existing, incoming, { maxNew, maxRetain }) {
   }
 
   let inserted = 0;
-  const updated = 0;
+  let updated = 0;
   const considered = incoming.length;
 
   for (const article of incoming) {
     const normalizedUrl = normalizeUrl(article.url);
-    if (byUrl.has(normalizedUrl)) {
+    const prev = byUrl.get(normalizedUrl);
+    if (prev) {
+      const next = { ...prev };
+      let changed = false;
+      const prevSummary = String(prev.summary ?? "").trim();
+      const nextSummary = String(article.summary ?? "").trim();
+      if (!prevSummary && nextSummary) {
+        next.summary = article.summary;
+        changed = true;
+      }
+      if (!prev.imageUrl && article.imageUrl) {
+        next.imageUrl = article.imageUrl;
+        changed = true;
+      }
+      if (changed) {
+        byUrl.set(normalizedUrl, next);
+        updated += 1;
+      }
       continue;
     }
     if (inserted >= maxNew) {
       continue;
     }
-    byUrl.set(normalizedUrl, { ...article, url: normalizedUrl });
+    const stored = { ...article, url: normalizedUrl };
+    if (!stored.imageUrl) {
+      delete stored.imageUrl;
+    }
+    byUrl.set(normalizedUrl, stored);
     inserted += 1;
   }
 

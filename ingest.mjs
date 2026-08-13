@@ -10,6 +10,7 @@ import {
   upsertArticles,
 } from "./articles-store.js";
 import { extractImageUrl, extractSummary } from "./article-media.js";
+import { pruneReadArticles } from "./prune-read.js";
 
 const MAX_SUMMARY_LENGTH = 1500;
 const DEFAULT_FEED_TIMEOUT_MS = 20_000;
@@ -217,13 +218,49 @@ export async function runIngest({
     });
     articlesConsidered = result.considered;
     const allFeedsFailed = feedsAttempted > 0 && feedsSucceeded === 0;
-    if (!allFeedsFailed) {
-      await writeArticlesJsonl(articlesPath, result.articles);
-    }
 
+    // Concurrent Launchpad edits: fail before any prune writes.
     const userStateMtimeAfter = await readUserStateMtime(userStatePath);
     if (userStateMtimeAfter !== userStateMtimeBefore) {
       throw new Error("user-state.json changed during ingest");
+    }
+
+    let articlesPruned = 0;
+    let userStatePruned = 0;
+    if (!allFeedsFailed) {
+      let userState;
+      try {
+        userState = JSON.parse(await readFile(userStatePath, "utf8"));
+      } catch (error) {
+        if (error?.code !== "ENOENT") {
+          throw error;
+        }
+        userState = { byUrl: {} };
+      }
+      const byUrl =
+        userState.byUrl && typeof userState.byUrl === "object"
+          ? userState.byUrl
+          : {};
+      const pruned = pruneReadArticles(result.articles, byUrl, {
+        maxAgeDays: 30,
+      });
+      articlesPruned = pruned.articlesPruned;
+      userStatePruned = pruned.userStatePruned;
+      await writeArticlesJsonl(articlesPath, pruned.articles);
+      if (articlesPruned > 0 || userStatePruned > 0) {
+        await writeFile(
+          userStatePath,
+          `${JSON.stringify(
+            {
+              ...userState,
+              byUrl: pruned.byUrl,
+              updatedAt: new Date().toISOString(),
+            },
+            null,
+            2,
+          )}\n`,
+        );
+      }
     }
 
     const failedFeeds = feedFailures.map((entry) => {
@@ -245,6 +282,8 @@ export async function runIngest({
       articlesConsidered,
       articlesInserted: allFeedsFailed ? 0 : result.inserted,
       articlesUpdated: allFeedsFailed ? 0 : result.updated,
+      articlesPruned,
+      userStatePruned,
       failedFeeds,
       error: ok
         ? null
@@ -264,6 +303,8 @@ export async function runIngest({
       articlesConsidered,
       articlesInserted: 0,
       articlesUpdated: 0,
+      articlesPruned: 0,
+      userStatePruned: 0,
       failedFeeds: [],
       error: error instanceof Error ? error.message : String(error),
     };

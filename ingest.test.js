@@ -613,6 +613,101 @@ describe("runIngest", () => {
     );
   });
 
+  test("prunes old read articles after upsert and records last-run counts", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "shared-news-prune-"));
+    const articlesPath = path.join(dir, "articles.jsonl");
+    const userStatePath = path.join(dir, "user-state.json");
+    const oldUrl = "https://example.com/old-read";
+    const keepUrl = "https://example.com/keep";
+    await writeFile(
+      path.join(dir, "sources.json"),
+      JSON.stringify({
+        feeds: [
+          {
+            id: "prune-feed",
+            label: "Prune Feed",
+            engine: "roundup",
+            kind: "rss",
+            url: "https://feeds.example/prune",
+            enabled: true,
+          },
+        ],
+      }),
+    );
+    await writeArticlesJsonl(articlesPath, [
+      {
+        url: oldUrl,
+        title: "Old read",
+        date: "2026-06-01T00:00:00.000Z",
+        source: "Prune Feed",
+        sourceId: "prune-feed",
+        engine: "roundup",
+        summary: "",
+        tags: [],
+        category: "rss",
+        processedAt: "2026-06-01T00:00:00.000Z",
+      },
+      {
+        url: keepUrl,
+        title: "Keep unread",
+        date: "2026-08-01T00:00:00.000Z",
+        source: "Prune Feed",
+        sourceId: "prune-feed",
+        engine: "roundup",
+        summary: "",
+        tags: [],
+        category: "rss",
+        processedAt: "2026-08-01T00:00:00.000Z",
+      },
+    ]);
+    await writeFile(
+      userStatePath,
+      JSON.stringify(
+        {
+          version: 1,
+          byUrl: {
+            [oldUrl]: {
+              read: true,
+              readAt: "2026-06-01T00:00:00.000Z",
+            },
+            [keepUrl]: {
+              read: false,
+            },
+          },
+          updatedAt: "2026-08-01T00:00:00.000Z",
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+
+    const result = await runIngest({
+      newsDir: dir,
+      fetchFeed: async () => ({ items: [] }),
+    });
+
+    assert.equal(result.ok, true);
+    assert.ok(result.articlesPruned >= 1);
+    assert.ok(result.userStatePruned >= 1);
+    const articles = await readArticlesJsonl(articlesPath);
+    assert.equal(
+      articles.some((article) => article.url === oldUrl),
+      false,
+    );
+    assert.equal(
+      articles.some((article) => article.url === keepUrl),
+      true,
+    );
+    const userState = JSON.parse(await readFile(userStatePath, "utf8"));
+    assert.equal(userState.byUrl[oldUrl], undefined);
+    assert.ok(userState.byUrl[keepUrl]);
+    const lastRun = JSON.parse(
+      await readFile(path.join(dir, "last-run.json"), "utf8"),
+    );
+    assert.ok(lastRun.articlesPruned >= 1);
+    assert.ok(lastRun.userStatePruned >= 1);
+  });
+
   test("records all-feed failure without replacing articles", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "shared-news-failure-"));
     const articlesPath = path.join(dir, "articles.jsonl");

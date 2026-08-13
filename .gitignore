@@ -1,1 +1,19 @@
 node_modules/
+.worktrees/
+dist/
+build/
+.next/
+coverage/
+.turbo/
+
+.env
+.env.*
+!.env.example
+
+.DS_Store
+*.log
+
+# Nicka-Notes / agent bootstrap (reinstall via /nn-obsidian)
+.cursor/
+.gemini/
+.cursorrules

@@ -14,6 +14,29 @@ const MAX_SUMMARY_LENGTH = 500;
 const DEFAULT_FEED_TIMEOUT_MS = 20_000;
 const parser = new Parser();
 
+export function parseIngestArgs(argv) {
+  const values = Object.fromEntries(
+    argv
+      .filter((value) => value.startsWith("--") && value.includes("="))
+      .map((value) => {
+        const separator = value.indexOf("=");
+        return [value.slice(2, separator), value.slice(separator + 1)];
+      }),
+  );
+  const args = {
+    maxNew: values["max-new"] === undefined ? 8 : Number(values["max-new"]),
+    maxRetain:
+      values["max-retain"] === undefined ? 200 : Number(values["max-retain"]),
+  };
+  if (values.dir !== undefined) {
+    args.newsDir = values.dir;
+  }
+  if (values["feed-id"] !== undefined) {
+    args.feedId = values["feed-id"];
+  }
+  return args;
+}
+
 async function fetchDefaultFeed(url, _feed, { signal } = {}) {
   const response = await fetch(url, {
     headers: {
@@ -111,19 +134,27 @@ async function fetchFeedWithTimeout(fetchFeed, feed, timeoutMs) {
  * @param {{
  *   newsDir: string,
  *   fetchFeed?: (url: string, feed: object, options?: {signal: AbortSignal}) => Promise<{items?: object[]}>,
- *   feedTimeoutMs?: number
+ *   feedTimeoutMs?: number,
+ *   feedId?: string,
+ *   maxNew?: number,
+ *   maxRetain?: number
  * }} options
  */
 export async function runIngest({
   newsDir,
   fetchFeed = fetchDefaultFeed,
   feedTimeoutMs = DEFAULT_FEED_TIMEOUT_MS,
+  feedId,
+  maxNew = 8,
+  maxRetain = 200,
 }) {
   if (!newsDir || !path.isAbsolute(newsDir)) {
     throw new Error("SHARED_NEWS_DIR or --dir= must be an absolute path");
   }
 
   const startedAt = new Date().toISOString();
+  const mode = feedId === undefined ? "full" : "feed";
+  const selectedFeedId = feedId ?? null;
   const userStatePath = path.join(newsDir, "user-state.json");
   const userStateMtimeBefore = await readUserStateMtime(userStatePath);
   let feedsAttempted = 0;
@@ -134,9 +165,16 @@ export async function runIngest({
     const sources = JSON.parse(
       await readFile(path.join(newsDir, "sources.json"), "utf8"),
     );
-    const feeds = Array.isArray(sources.feeds)
+    const enabledFeeds = Array.isArray(sources.feeds)
       ? sources.feeds.filter((feed) => feed.enabled)
       : [];
+    const feeds =
+      feedId === undefined
+        ? enabledFeeds
+        : enabledFeeds.filter((feed) => feed.id === feedId);
+    if (feedId !== undefined && feeds.length === 0) {
+      throw new Error(`Enabled feed not found: ${feedId}`);
+    }
     const processedAt = new Date().toISOString();
     const candidates = [];
     const feedFailures = [];
@@ -167,8 +205,8 @@ export async function runIngest({
     const articlesPath = path.join(newsDir, "articles.jsonl");
     const existing = await readArticlesJsonl(articlesPath);
     const result = upsertArticles(existing, candidates, {
-      maxNew: 8,
-      maxRetain: 200,
+      maxNew,
+      maxRetain,
     });
     articlesConsidered = result.considered;
     const allFeedsFailed = feedsAttempted > 0 && feedsSucceeded === 0;
@@ -193,6 +231,8 @@ export async function runIngest({
       startedAt,
       finishedAt: new Date().toISOString(),
       ok,
+      mode,
+      feedId: selectedFeedId,
       feedsAttempted,
       feedsSucceeded,
       articlesConsidered,
@@ -210,6 +250,8 @@ export async function runIngest({
       startedAt,
       finishedAt: new Date().toISOString(),
       ok: false,
+      mode,
+      feedId: selectedFeedId,
       feedsAttempted,
       feedsSucceeded,
       articlesConsidered,
@@ -227,16 +269,15 @@ export async function runIngest({
   }
 }
 
-function cliNewsDir() {
-  const argument = process.argv.slice(2).find((value) => value.startsWith("--dir="));
-  return argument ? argument.slice("--dir=".length) : process.env.SHARED_NEWS_DIR;
-}
-
 if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
 ) {
-  runIngest({ newsDir: cliNewsDir() })
+  const args = parseIngestArgs(process.argv.slice(2));
+  runIngest({
+    ...args,
+    newsDir: args.newsDir ?? process.env.SHARED_NEWS_DIR,
+  })
     .then((result) => {
       console.log(JSON.stringify(result));
       if (!result.ok) {

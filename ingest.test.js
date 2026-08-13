@@ -8,7 +8,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { runIngest } from "./ingest.mjs";
+import { parseIngestArgs, runIngest } from "./ingest.mjs";
 import { normalizeUrl } from "./normalize-url.js";
 import {
   readArticlesJsonl,
@@ -154,6 +154,32 @@ describe("jsonl round-trip", () => {
   });
 });
 
+describe("parseIngestArgs", () => {
+  test("reads feed-id, max-new, max-retain, and dir", () => {
+    assert.deepEqual(
+      parseIngestArgs([
+        "--dir=/tmp/shared-news",
+        "--feed-id=openai-news",
+        "--max-new=10",
+        "--max-retain=150",
+      ]),
+      {
+        newsDir: "/tmp/shared-news",
+        feedId: "openai-news",
+        maxNew: 10,
+        maxRetain: 150,
+      },
+    );
+  });
+
+  test("uses default article limits", () => {
+    assert.deepEqual(parseIngestArgs([]), {
+      maxNew: 8,
+      maxRetain: 200,
+    });
+  });
+});
+
 describe("runIngest", () => {
   test("ingests enabled feeds newest-first without touching user state", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "shared-news-ingest-"));
@@ -210,6 +236,8 @@ describe("runIngest", () => {
 
     assert.deepEqual(requested, ["https://feeds.example/test"]);
     assert.equal(result.ok, true);
+    assert.equal(result.mode, "full");
+    assert.equal(result.feedId, null);
     assert.equal(result.articlesInserted, 2);
     const articles = await readArticlesJsonl(path.join(dir, "articles.jsonl"));
     assert.equal(articles.length, 2);
@@ -224,6 +252,8 @@ describe("runIngest", () => {
     );
     assert.equal(lastRun.feedsAttempted, 1);
     assert.equal(lastRun.feedsSucceeded, 1);
+    assert.equal(lastRun.mode, "full");
+    assert.equal(lastRun.feedId, null);
     assert.equal(lastRun.articlesConsidered, 2);
     assert.equal(lastRun.error, null);
     const after = await stat(userStatePath);
@@ -283,6 +313,124 @@ describe("runIngest", () => {
     ]);
     const articles = await readArticlesJsonl(path.join(dir, "articles.jsonl"));
     assert.equal(articles.length, 1);
+  });
+
+  test("with feedId only fetches that enabled feed", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "shared-news-single-feed-"));
+    await writeFile(
+      path.join(dir, "sources.json"),
+      JSON.stringify({
+        feeds: [
+          {
+            id: "first",
+            label: "First",
+            kind: "rss",
+            url: "https://feeds.example/first",
+            enabled: true,
+          },
+          {
+            id: "second",
+            label: "Second",
+            kind: "rss",
+            url: "https://feeds.example/second",
+            enabled: true,
+          },
+        ],
+      }),
+    );
+    const requested = [];
+
+    const result = await runIngest({
+      newsDir: dir,
+      feedId: "second",
+      fetchFeed: async (url) => {
+        requested.push(url);
+        return { items: [] };
+      },
+    });
+
+    assert.deepEqual(requested, ["https://feeds.example/second"]);
+    assert.equal(result.mode, "feed");
+    assert.equal(result.feedId, "second");
+    const lastRun = JSON.parse(
+      await readFile(path.join(dir, "last-run.json"), "utf8"),
+    );
+    assert.equal(lastRun.mode, "feed");
+    assert.equal(lastRun.feedId, "second");
+  });
+
+  test("with unknown feedId fails without writing articles", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "shared-news-unknown-feed-"));
+    const articlesPath = path.join(dir, "articles.jsonl");
+    const original = '{"url":"https://example.com/existing"}\n';
+    await writeFile(
+      path.join(dir, "sources.json"),
+      JSON.stringify({
+        feeds: [
+          {
+            id: "known",
+            label: "Known",
+            kind: "rss",
+            url: "https://feeds.example/known",
+            enabled: true,
+          },
+        ],
+      }),
+    );
+    await writeFile(articlesPath, original);
+
+    await assert.rejects(
+      runIngest({
+        newsDir: dir,
+        feedId: "missing",
+        fetchFeed: async () => {
+          throw new Error("must not fetch");
+        },
+      }),
+      /missing/,
+    );
+
+    assert.equal(await readFile(articlesPath, "utf8"), original);
+    const lastRun = JSON.parse(
+      await readFile(path.join(dir, "last-run.json"), "utf8"),
+    );
+    assert.equal(lastRun.ok, false);
+    assert.equal(lastRun.mode, "feed");
+    assert.equal(lastRun.feedId, "missing");
+  });
+
+  test("respects maxNew", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "shared-news-max-new-"));
+    await writeFile(
+      path.join(dir, "sources.json"),
+      JSON.stringify({
+        feeds: [
+          {
+            id: "many",
+            label: "Many",
+            kind: "rss",
+            url: "https://feeds.example/many",
+            enabled: true,
+          },
+        ],
+      }),
+    );
+
+    const result = await runIngest({
+      newsDir: dir,
+      maxNew: 2,
+      fetchFeed: async () => ({
+        items: Array.from({ length: 5 }, (_, index) => ({
+          title: `Article ${index}`,
+          link: `https://example.com/${index}`,
+          isoDate: `2026-08-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
+        })),
+      }),
+    });
+
+    assert.equal(result.articlesInserted, 2);
+    const articles = await readArticlesJsonl(path.join(dir, "articles.jsonl"));
+    assert.equal(articles.length, 2);
   });
 
   test("records all-feed failure without replacing articles", async () => {

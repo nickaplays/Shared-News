@@ -11,6 +11,7 @@ import {
 } from "./articles-store.js";
 import { extractImageUrl, extractSummary } from "./article-media.js";
 import { pruneReadArticles } from "./prune-read.js";
+import { resolveNewsDir } from "./resolve-news-dir.js";
 
 const MAX_SUMMARY_LENGTH = 1500;
 const DEFAULT_FEED_TIMEOUT_MS = 20_000;
@@ -42,6 +43,9 @@ export function parseIngestArgs(argv) {
   }
   if (values["feed-id"] !== undefined) {
     args.feedId = values["feed-id"];
+  }
+  if (values.profile !== undefined) {
+    args.profile = values.profile;
   }
   return args;
 }
@@ -137,7 +141,8 @@ async function fetchFeedWithTimeout(fetchFeed, feed, timeoutMs) {
  *   feedTimeoutMs?: number,
  *   feedId?: string,
  *   maxNew?: number,
- *   maxRetain?: number
+ *   maxRetain?: number,
+ *   profile?: "work" | "personal" | null
  * }} options
  */
 export async function runIngest({
@@ -147,6 +152,7 @@ export async function runIngest({
   feedId,
   maxNew = 8,
   maxRetain = 200,
+  profile = null,
 }) {
   if (!newsDir || !path.isAbsolute(newsDir)) {
     throw new Error("SHARED_NEWS_DIR or --dir= must be an absolute path");
@@ -162,9 +168,18 @@ export async function runIngest({
   let articlesConsidered = 0;
 
   try {
-    const sources = JSON.parse(
-      await readFile(path.join(newsDir, "sources.json"), "utf8"),
-    );
+    let sourcesRaw;
+    try {
+      sourcesRaw = await readFile(path.join(newsDir, "sources.json"), "utf8");
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        throw new Error(
+          `News store not found: ${newsDir} (run migrate-profiles.mjs)`,
+        );
+      }
+      throw error;
+    }
+    const sources = JSON.parse(sourcesRaw);
     const enabledFeeds = Array.isArray(sources.feeds)
       ? sources.feeds.filter((feed) => feed.enabled)
       : [];
@@ -277,6 +292,7 @@ export async function runIngest({
       ok,
       mode,
       feedId: selectedFeedId,
+      profile: profile ?? null,
       feedsAttempted,
       feedsSucceeded,
       articlesConsidered,
@@ -298,6 +314,7 @@ export async function runIngest({
       ok: false,
       mode,
       feedId: selectedFeedId,
+      profile: profile ?? null,
       feedsAttempted,
       feedsSucceeded,
       articlesConsidered,
@@ -322,18 +339,32 @@ if (
   import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
 ) {
   const args = parseIngestArgs(process.argv.slice(2));
-  runIngest({
-    ...args,
-    newsDir: args.newsDir ?? process.env.SHARED_NEWS_DIR,
-  })
-    .then((result) => {
-      console.log(JSON.stringify(result));
-      if (!result.ok) {
-        process.exitCode = 1;
-      }
-    })
-    .catch((error) => {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exitCode = 1;
+  let resolved;
+  try {
+    resolved = resolveNewsDir({
+      newsRoot: process.env.SHARED_NEWS_DIR,
+      profile: args.profile,
+      dir: args.newsDir,
     });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
+  if (resolved) {
+    runIngest({
+      ...args,
+      newsDir: resolved.storeDir,
+      profile: resolved.profile,
+    })
+      .then((result) => {
+        console.log(JSON.stringify(result));
+        if (!result.ok) {
+          process.exitCode = 1;
+        }
+      })
+      .catch((error) => {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exitCode = 1;
+      });
+  }
 }

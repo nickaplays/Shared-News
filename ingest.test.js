@@ -244,6 +244,14 @@ describe("parseIngestArgs", () => {
       maxRetain: 200,
     });
   });
+
+  test("reads profile", () => {
+    assert.deepEqual(parseIngestArgs(["--profile=personal"]), {
+      maxNew: 8,
+      maxRetain: 200,
+      profile: "personal",
+    });
+  });
 });
 
 describe("runIngest", () => {
@@ -749,5 +757,58 @@ describe("runIngest", () => {
     assert.deepEqual(lastRun.failedFeeds, [
       { id: "broken", error: "feed unavailable" },
     ]);
+  });
+
+  test("records profile on last-run when provided", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "shared-news-profile-"));
+    await writeFile(
+      path.join(dir, "sources.json"),
+      JSON.stringify({ feeds: [] }),
+    );
+    const result = await runIngest({
+      newsDir: dir,
+      profile: "personal",
+      fetchFeed: async () => ({ items: [] }),
+    });
+    assert.equal(result.profile, "personal");
+    const lastRun = JSON.parse(
+      await readFile(path.join(dir, "last-run.json"), "utf8"),
+    );
+    assert.equal(lastRun.profile, "personal");
+  });
+
+  test("records null profile when omitted", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "shared-news-noprof-"));
+    await writeFile(
+      path.join(dir, "sources.json"),
+      JSON.stringify({ feeds: [] }),
+    );
+    const result = await runIngest({
+      newsDir: dir,
+      fetchFeed: async () => ({ items: [] }),
+    });
+    assert.equal(result.profile, null);
+  });
+
+  test("throws a migrate hint when sources.json is missing", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "shared-news-missing-"));
+    await assert.rejects(
+      () => runIngest({ newsDir: dir, fetchFeed: async () => ({ items: [] }) }),
+      /News store not found: .* \(run migrate-profiles.mjs\)/,
+    );
+  });
+});
+
+describe("profile isolation", () => {
+  test("resolveNewsDir personal path is a sibling of work", async () => {
+    const { resolveNewsDir } = await import("./resolve-news-dir.js");
+    const root = await mkdtemp(path.join(tmpdir(), "shared-news-root-"));
+    const { storeDir, profile } = resolveNewsDir({
+      newsRoot: root,
+      profile: "personal",
+    });
+    assert.equal(profile, "personal");
+    assert.equal(storeDir, path.join(root, "personal"));
+    assert.equal(path.dirname(storeDir), root);
   });
 });

@@ -9,6 +9,9 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { NEWS_PROFILES } from "./resolve-news-dir.js";
+
+const [workProfile, personalProfile] = NEWS_PROFILES;
 
 const MOVE_NAMES = new Set([
   "sources.json",
@@ -49,23 +52,32 @@ function emptyUserState(now) {
 async function seedPersonal(personalDir) {
   const now = new Date().toISOString();
   await mkdir(personalDir, { recursive: true });
-  await writeFile(
-    path.join(personalDir, "sources.json"),
-    `${JSON.stringify(emptySources(now), null, 2)}\n`,
-  );
-  await writeFile(path.join(personalDir, "articles.jsonl"), "");
-  await writeFile(
-    path.join(personalDir, "user-state.json"),
-    `${JSON.stringify(emptyUserState(now), null, 2)}\n`,
-  );
+  const sourcesPath = path.join(personalDir, "sources.json");
+  if (!(await exists(sourcesPath))) {
+    await writeFile(
+      sourcesPath,
+      `${JSON.stringify(emptySources(now), null, 2)}\n`,
+    );
+  }
+  const articlesPath = path.join(personalDir, "articles.jsonl");
+  if (!(await exists(articlesPath))) {
+    await writeFile(articlesPath, "");
+  }
+  const userStatePath = path.join(personalDir, "user-state.json");
+  if (!(await exists(userStatePath))) {
+    await writeFile(
+      userStatePath,
+      `${JSON.stringify(emptyUserState(now), null, 2)}\n`,
+    );
+  }
 }
 
 export async function migrateProfiles(newsRoot) {
   if (!newsRoot || !path.isAbsolute(newsRoot)) {
     throw new Error("SHARED_NEWS_DIR or --dir= must be an absolute path");
   }
-  const workDir = path.join(newsRoot, "work");
-  const personalDir = path.join(newsRoot, "personal");
+  const workDir = path.join(newsRoot, workProfile);
+  const personalDir = path.join(newsRoot, personalProfile);
   const parentSources = path.join(newsRoot, "sources.json");
   const workSources = path.join(workDir, "sources.json");
   const parentHas = await exists(parentSources);
@@ -73,11 +85,13 @@ export async function migrateProfiles(newsRoot) {
 
   if (parentHas && workHas) {
     throw new Error(
-      "Cannot migrate: sources.json exists at both parent and work/",
+      `Cannot migrate: sources.json exists at both parent and ${workProfile}/`,
     );
   }
   if (!parentHas && !workHas) {
-    throw new Error("No sources.json at parent or work/; nothing to migrate");
+    throw new Error(
+      `No sources.json at parent or ${workProfile}/; nothing to migrate`,
+    );
   }
 
   const moved = [];

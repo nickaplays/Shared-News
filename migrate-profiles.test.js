@@ -103,4 +103,35 @@ describe("migrateProfiles", () => {
       /SHARED_NEWS_DIR or --dir= must be an absolute path/,
     );
   });
+
+  test("seeds personal sources without overwriting existing articles", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "sn-partial-personal-"));
+    await mkdir(path.join(root, "work"));
+    await writeFile(
+      path.join(root, "work", "sources.json"),
+      JSON.stringify({ feeds: [] }),
+    );
+    await mkdir(path.join(root, "personal"));
+    const existingArticle = '{"url":"https://keep.example/1"}\n';
+    await writeFile(
+      path.join(root, "personal", "articles.jsonl"),
+      existingArticle,
+    );
+
+    const result = await migrateProfiles(root);
+    assert.equal(result.skipped, true);
+    assert.equal(result.createdPersonal, true);
+
+    const articles = await readFile(
+      path.join(root, "personal", "articles.jsonl"),
+      "utf8",
+    );
+    assert.equal(articles, existingArticle);
+
+    const personalSources = JSON.parse(
+      await readFile(path.join(root, "personal", "sources.json"), "utf8"),
+    );
+    assert.deepEqual(personalSources.feeds, []);
+    assert.deepEqual(personalSources.groups, []);
+  });
 });

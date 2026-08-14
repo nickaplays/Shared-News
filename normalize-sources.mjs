@@ -4,7 +4,7 @@
  * sourceId / source / engine / category from sources.json.
  *
  * Usage:
- *   node normalize-sources.mjs [--dry-run] [--news-dir PATH]
+ *   node normalize-sources.mjs [--dry-run] [--profile=work|personal] [--news-dir PATH]
  */
 
 import { copyFile, readFile, writeFile } from "node:fs/promises"
@@ -15,23 +15,32 @@ import {
   feedsFromSourcesDoc,
   normalizeArticles,
 } from "./normalize-article-source.js"
+import { resolveNewsDir } from "./resolve-news-dir.js"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 function parseArgs(argv) {
   let dryRun = false
-  let newsDir =
-    process.env.SHARED_NEWS_DIR?.trim() ||
-    "/Users/nickadenton/NKA/Obsidian/Automation-Projects/Nicka-Notes/shared/news"
+  let profile
+  let dir
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
     if (arg === "--dry-run") dryRun = true
     else if (arg === "--news-dir") {
-      newsDir = argv[i + 1]
+      dir = argv[i + 1]
       i += 1
+    } else if (arg.startsWith("--profile=")) {
+      profile = arg.slice("--profile=".length)
     }
   }
-  return { dryRun, newsDir: path.resolve(newsDir) }
+  const resolved = resolveNewsDir({
+    newsRoot:
+      process.env.SHARED_NEWS_DIR?.trim() ||
+      "/Users/nickadenton/NKA/Obsidian/Automation-Projects/Nicka-Notes/shared/news",
+    profile,
+    dir,
+  })
+  return { dryRun, newsDir: resolved.storeDir, profile: resolved.profile }
 }
 
 async function main() {

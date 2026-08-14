@@ -1,7 +1,7 @@
 # Shared News — Work / Personal profile stores
 
 > **Date:** 2026-08-14  
-> **Status:** Spec — awaiting review  
+> **Status:** Spec — in progress (package)  
 > **App:** Shared News (package) + Dev Launchpad + Gemini Twins (UI follow-up)  
 > **Repos:**  
 > - `/Users/nickadenton/NKA/Automation/Cursor/Shared-News`  

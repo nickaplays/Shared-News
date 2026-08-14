@@ -1,3 +1,4 @@
+import { access } from "node:fs/promises";
 import path from "node:path";
 
 export const NEWS_PROFILES = Object.freeze(["work", "personal"]);
@@ -10,7 +11,19 @@ function requireAbsolute(dir) {
   return dir;
 }
 
-export function resolveNewsDir({ newsRoot, profile, dir } = {}) {
+async function exists(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+export async function resolveNewsDir({ newsRoot, profile, dir } = {}) {
   if (dir !== undefined && dir !== null && dir !== "") {
     return { storeDir: requireAbsolute(dir), profile: null };
   }
@@ -21,8 +34,18 @@ export function resolveNewsDir({ newsRoot, profile, dir } = {}) {
   if (!NEWS_PROFILES.includes(selected)) {
     throw new Error(`Unknown news profile: ${selected}`);
   }
+  const root = requireAbsolute(newsRoot);
+  const profileDir = path.join(root, selected);
+  if (
+    selected === "work" &&
+    !(await exists(path.join(profileDir, "sources.json"))) &&
+    (await exists(path.join(root, "sources.json")))
+  ) {
+    // Remove at rollout step 5, after migrate and UI fallbacks.
+    return { storeDir: root, profile: selected };
+  }
   return {
-    storeDir: path.join(requireAbsolute(newsRoot), selected),
+    storeDir: profileDir,
     profile: selected,
   };
 }

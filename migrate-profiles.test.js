@@ -22,6 +22,7 @@ async function writeParentStore(root) {
     JSON.stringify({ version: 1, byUrl: {} }),
   );
   await writeFile(path.join(root, "last-run.json"), JSON.stringify({ ok: true }));
+  await writeFile(path.join(root, ".legacy-imported.json"), "{}");
   await writeFile(path.join(root, "articles.jsonl.bak-stamp"), "backup\n");
 }
 
@@ -33,6 +34,8 @@ describe("migrateProfiles", () => {
     assert.equal(result.ok, true);
     assert.equal(result.skipped, false);
     assert.ok(result.moved.includes("sources.json"));
+    assert.equal(result.moved.at(-1), "sources.json");
+    assert.deepEqual(result.leftovers, []);
     assert.ok(result.createdPersonal);
     const workSources = JSON.parse(
       await readFile(path.join(root, "work", "sources.json"), "utf8"),
@@ -61,6 +64,11 @@ describe("migrateProfiles", () => {
       "utf8",
     );
     assert.equal(bak, "backup\n");
+    assert.equal(
+      await readFile(path.join(root, "work", ".legacy-imported.json"), "utf8"),
+      "{}",
+    );
+    await assert.rejects(readFile(path.join(root, ".legacy-imported.json")));
   });
 
   test("is idempotent when work already exists", async () => {
@@ -70,8 +78,14 @@ describe("migrateProfiles", () => {
       path.join(root, "work", "sources.json"),
       JSON.stringify({ feeds: [] }),
     );
+    await writeFile(path.join(root, "articles.jsonl"), "leftover\n");
+    await writeFile(path.join(root, "articles.jsonl.bak-old"), "backup\n");
     const first = await migrateProfiles(root);
     assert.equal(first.skipped, true);
+    assert.deepEqual(first.leftovers, [
+      "articles.jsonl",
+      "articles.jsonl.bak-old",
+    ]);
     assert.equal(first.createdPersonal, true);
     const second = await migrateProfiles(root);
     assert.equal(second.skipped, true);

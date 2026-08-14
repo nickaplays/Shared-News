@@ -341,7 +341,7 @@ if (
   const args = parseIngestArgs(process.argv.slice(2));
   let resolved;
   try {
-    resolved = resolveNewsDir({
+    resolved = await resolveNewsDir({
       newsRoot: process.env.SHARED_NEWS_DIR,
       profile: args.profile,
       dir: args.newsDir,

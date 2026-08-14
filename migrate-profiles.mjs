@@ -14,10 +14,11 @@ import { NEWS_PROFILES } from "./resolve-news-dir.js";
 const [workProfile, personalProfile] = NEWS_PROFILES;
 
 const MOVE_NAMES = new Set([
-  "sources.json",
   "articles.jsonl",
   "user-state.json",
   "last-run.json",
+  ".legacy-imported.json",
+  "sources.json",
 ]);
 
 async function exists(filePath) {
@@ -95,18 +96,28 @@ export async function migrateProfiles(newsRoot) {
   }
 
   const moved = [];
+  let leftovers = [];
   let skipped = false;
   if (workHas) {
     skipped = true;
+    leftovers = (await readdir(newsRoot))
+      .filter(
+        (name) =>
+          MOVE_NAMES.has(name) || name.startsWith("articles.jsonl.bak-"),
+      )
+      .sort();
   } else {
     await mkdir(workDir, { recursive: true });
     const names = await readdir(newsRoot);
-    for (const name of names) {
-      const shouldMove =
-        MOVE_NAMES.has(name) || name.startsWith("articles.jsonl.bak-");
-      if (!shouldMove) {
-        continue;
-      }
+    const namesToMove = names
+      .filter(
+        (name) =>
+          name !== "sources.json" &&
+          (MOVE_NAMES.has(name) || name.startsWith("articles.jsonl.bak-")),
+      )
+      .sort();
+    namesToMove.push("sources.json");
+    for (const name of namesToMove) {
       await rename(path.join(newsRoot, name), path.join(workDir, name));
       moved.push(name);
     }
@@ -118,7 +129,7 @@ export async function migrateProfiles(newsRoot) {
     createdPersonal = true;
   }
 
-  return { ok: true, skipped, moved, createdPersonal };
+  return { ok: true, skipped, moved, leftovers, createdPersonal };
 }
 
 if (

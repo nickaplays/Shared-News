@@ -4,7 +4,7 @@
  * sourceId / source / engine / category from sources.json.
  *
  * Usage:
- *   node normalize-sources.mjs [--dry-run] [--profile=work|personal] [--news-dir PATH]
+ *   node normalize-sources.mjs [--dry-run] [--profile=work|personal] [--news-dir /absolute/path]
  */
 
 import { copyFile, readFile, writeFile } from "node:fs/promises"
@@ -19,7 +19,7 @@ import { resolveNewsDir } from "./resolve-news-dir.js"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-function parseArgs(argv) {
+async function parseArgs(argv) {
   let dryRun = false
   let profile
   let dir
@@ -33,7 +33,7 @@ function parseArgs(argv) {
       profile = arg.slice("--profile=".length)
     }
   }
-  const resolved = resolveNewsDir({
+  const resolved = await resolveNewsDir({
     newsRoot:
       process.env.SHARED_NEWS_DIR?.trim() ||
       "/Users/nickadenton/NKA/Obsidian/Automation-Projects/Nicka-Notes/shared/news",
@@ -44,7 +44,7 @@ function parseArgs(argv) {
 }
 
 async function main() {
-  const { dryRun, newsDir } = parseArgs(process.argv.slice(2))
+  const { dryRun, newsDir, profile } = await parseArgs(process.argv.slice(2))
   const sourcesPath = path.join(newsDir, "sources.json")
   const articlesPath = path.join(newsDir, "articles.jsonl")
 
@@ -67,6 +67,7 @@ async function main() {
     JSON.stringify(
       {
         newsDir,
+        profile,
         feeds: feeds.length,
         articles: articles.length,
         matched,
@@ -103,6 +104,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error)
+  console.error(error instanceof Error ? error.message : String(error))
   process.exitCode = 1
 })

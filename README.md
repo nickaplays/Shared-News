@@ -33,11 +33,24 @@ node ingest.mjs --profile=personal
 | `--max-new=N` | Insert cap (default 8) |
 | `--max-retain=N` | Retain cap (default 200) |
 
-`run-ingest.sh` (launchd every 6h) runs work then personal.
+`run-ingest.sh` (launchd every 6h) runs nested work then personal profiles.
+Until migration, work falls back to the parent store when only the parent's
+`sources.json` exists. Personal never falls back.
+
+Normalize an individual profile with:
+
+```bash
+node normalize-sources.mjs --profile=work
+node normalize-sources.mjs --profile=personal
+```
+
+For normalization, `--news-dir` selects an explicit store, overrides
+`--profile`, and must be an absolute path.
 
 ## Migrate (operator, later)
 
 ```bash
+export SHARED_NEWS_DIR="/Users/nickadenton/NKA/Obsidian/Automation-Projects/Nicka-Notes/shared/news"
 node migrate-profiles.mjs
 ```
 

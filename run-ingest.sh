@@ -8,7 +8,7 @@ export SHARED_NEWS_DIR="${SHARED_NEWS_DIR:-/Users/nickadenton/NKA/Obsidian/Autom
 NODE="${NODE_BIN:-/opt/homebrew/bin/node}"
 INGEST="/Users/nickadenton/NKA/Automation/Cursor/Shared-News/ingest.mjs"
 LOG_DIR="${HOME}/Library/Logs/shared-news"
-mkdir -p "$LOG_DIR"
+mkdir -p "$LOG_DIR" || exit 1
 
 {
   echo "==== $(date -u +%Y-%m-%dT%H:%M:%SZ) ===="

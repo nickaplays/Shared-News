@@ -1,5 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   DEFAULT_NEWS_PROFILE,
@@ -7,7 +9,9 @@ import {
   resolveNewsDir,
 } from "./resolve-news-dir.js";
 
-const root = "/tmp/shared-news-root";
+async function makeRoot() {
+  return mkdtemp(path.join(tmpdir(), "shared-news-root-"));
+}
 
 describe("resolveNewsDir", () => {
   test("exports work and personal with default work", () => {
@@ -15,16 +19,30 @@ describe("resolveNewsDir", () => {
     assert.equal(DEFAULT_NEWS_PROFILE, "work");
   });
 
-  test("defaults to work under the news root", () => {
-    assert.deepEqual(resolveNewsDir({ newsRoot: root }), {
+  test("parent sources only resolves work to parent", async () => {
+    const root = await makeRoot();
+    await writeFile(path.join(root, "sources.json"), "{}");
+    assert.deepEqual(await resolveNewsDir({ newsRoot: root }), {
+      storeDir: root,
+      profile: "work",
+    });
+  });
+
+  test("work sources resolves work to work directory", async () => {
+    const root = await makeRoot();
+    await mkdir(path.join(root, "work"));
+    await writeFile(path.join(root, "work", "sources.json"), "{}");
+    assert.deepEqual(await resolveNewsDir({ newsRoot: root }), {
       storeDir: path.join(root, "work"),
       profile: "work",
     });
   });
 
-  test("appends personal when profile is personal", () => {
+  test("personal never uses parent sources", async () => {
+    const root = await makeRoot();
+    await writeFile(path.join(root, "sources.json"), "{}");
     assert.deepEqual(
-      resolveNewsDir({ newsRoot: root, profile: "personal" }),
+      await resolveNewsDir({ newsRoot: root, profile: "personal" }),
       {
         storeDir: path.join(root, "personal"),
         profile: "personal",
@@ -32,10 +50,10 @@ describe("resolveNewsDir", () => {
     );
   });
 
-  test("dir wins and clears profile", () => {
+  test("dir wins and clears profile", async () => {
     assert.deepEqual(
-      resolveNewsDir({
-        newsRoot: root,
+      await resolveNewsDir({
+        newsRoot: await makeRoot(),
         profile: "personal",
         dir: "/tmp/explicit-store",
       }),
@@ -43,22 +61,23 @@ describe("resolveNewsDir", () => {
     );
   });
 
-  test("rejects unknown profile", () => {
-    assert.throws(
+  test("rejects unknown profile", async () => {
+    const root = await makeRoot();
+    await assert.rejects(
       () => resolveNewsDir({ newsRoot: root, profile: "family" }),
       /Unknown news profile: family/,
     );
   });
 
-  test("rejects relative newsRoot", () => {
-    assert.throws(
+  test("rejects relative newsRoot", async () => {
+    await assert.rejects(
       () => resolveNewsDir({ newsRoot: "shared/news" }),
       /SHARED_NEWS_DIR or --dir= must be an absolute path/,
     );
   });
 
-  test("rejects relative dir", () => {
-    assert.throws(
+  test("rejects relative dir", async () => {
+    await assert.rejects(
       () => resolveNewsDir({ dir: "news/work" }),
       /SHARED_NEWS_DIR or --dir= must be an absolute path/,
     );

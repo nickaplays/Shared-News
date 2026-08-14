@@ -1,6 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  mkdir,
   mkdtemp,
   readFile,
   stat,
@@ -9,6 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseIngestArgs, runIngest } from "./ingest.mjs";
+import { resolveNewsDir } from "./resolve-news-dir.js";
 import { normalizeUrl } from "./normalize-url.js";
 import {
   readArticlesJsonl,
@@ -800,15 +802,25 @@ describe("runIngest", () => {
 });
 
 describe("profile isolation", () => {
-  test("resolveNewsDir personal path is a sibling of work", async () => {
-    const { resolveNewsDir } = await import("./resolve-news-dir.js");
+  test("personal ingest does not create a work directory", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "shared-news-root-"));
-    const { storeDir, profile } = resolveNewsDir({
+    const personalDir = path.join(root, "personal");
+    await mkdir(personalDir);
+    await writeFile(
+      path.join(personalDir, "sources.json"),
+      JSON.stringify({ feeds: [] }),
+    );
+    const { storeDir, profile } = await resolveNewsDir({
       newsRoot: root,
       profile: "personal",
     });
+    await runIngest({
+      newsDir: storeDir,
+      profile,
+      fetchFeed: async () => ({ items: [] }),
+    });
     assert.equal(profile, "personal");
-    assert.equal(storeDir, path.join(root, "personal"));
-    assert.equal(path.dirname(storeDir), root);
+    assert.equal(storeDir, personalDir);
+    await assert.rejects(stat(path.join(root, "work")), { code: "ENOENT" });
   });
 });

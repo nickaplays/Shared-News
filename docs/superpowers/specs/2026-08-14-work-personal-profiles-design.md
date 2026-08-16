@@ -1,7 +1,7 @@
 # Shared News — Work / Personal profile stores
 
 > **Date:** 2026-08-14  
-> **Status:** Spec — in progress (package)  
+> **Status:** Spec — implemented (package + hosts); Work parent fallback removed   
 > **App:** Shared News (package) + Dev Launchpad + Gemini Twins (UI follow-up)  
 > **Repos:**  
 > - `/Users/nickadenton/NKA/Automation/Cursor/Shared-News`  
@@ -22,7 +22,7 @@ There is one vault store (`shared/news/` with a single `sources.json`, `articles
 3. Shared-News CLI selects a store with `--profile=work|personal`. Default **work**.  
 4. Scheduled ingest (launchd, 6h) refreshes **both** stores, sequentially (work then personal). Personal still runs if work fails.  
 5. Each host UI (Dev Launchpad, Gemini Twins) has its own Work/Personal toggle; the choice is **not** shared between apps.  
-6. Roll out so existing UIs do not break: implement package + UI path wiring **before** running migrate; Work falls back to the parent folder until `work/sources.json` exists.
+6. Roll out so existing UIs do not break: implement package + UI path wiring **before** running migrate; temporarily Work fell back to the parent folder until `work/sources.json` existed (removed after migrate).
 
 ### Non-goals
 
@@ -167,7 +167,7 @@ newsDir(profile) = join(SHARED_NEWS_DIR, profile)   // profile = 'work' | 'perso
 
 All catalog, articles, user-state, delete-purge, and spawn-ingest calls use `newsDir(activeProfile)`.
 
-**Work fallback (until migrate):** if `profile === 'work'` and `work/sources.json` does not exist, use `SHARED_NEWS_DIR` itself (today’s layout). Personal has no fallback; if `personal/` is missing, show empty + prompt to run migrate / create store.
+**Work path:** `join(SHARED_NEWS_DIR, 'work')`. **Personal path:** `join(SHARED_NEWS_DIR, 'personal')`. If a store folder is missing, the UI shows empty / the CLI errors with a clear migrate hint.
 
 ### 6.2 Toggle
 
@@ -193,7 +193,7 @@ YouTube `@handle` resolve stays in Launchpad and writes the resolved RSS URL int
 2. **Dev Launchpad:** toggle + path wiring + `--profile` on spawn + Work parent fallback.  
 3. **Gemini Twins:** same toggle + path wiring + Work parent fallback.  
 4. **Run migrate** once (operator). Current files → `work/`; empty `personal/`.  
-5. **Drop Work parent fallback** after both apps have shipped nested paths.
+5. **Drop Work parent fallback** after both apps have shipped nested paths. ✅ Done.
 
 Do not add a toggle that still reads the parent for both sides (switching would no-op). Do not migrate before the UIs can open `work/`.
 

@@ -9,7 +9,7 @@ $SHARED_NEWS_DIR/work/
 $SHARED_NEWS_DIR/personal/
 ```
 
-Do **not** run migrate until Dev Launchpad and Gemini Twins can open `work/` (or fall back to the parent folder).
+Each profile always resolves to `$SHARED_NEWS_DIR/<profile>/` (no parent-folder fallback).
 
 ## Setup
 
@@ -34,8 +34,6 @@ node ingest.mjs --profile=personal
 | `--max-retain=N` | Retain cap (default 200) |
 
 `run-ingest.sh` (launchd every 6h) runs nested work then personal profiles.
-Until migration, work falls back to the parent store when only the parent's
-`sources.json` exists. Personal never falls back.
 
 Normalize an individual profile with:
 
@@ -47,14 +45,14 @@ node normalize-sources.mjs --profile=personal
 For normalization, `--news-dir` selects an explicit store, overrides
 `--profile`, and must be an absolute path.
 
-## Migrate (operator, later)
+## Migrate (operator, one-shot)
 
 ```bash
 export SHARED_NEWS_DIR="/Users/nickadenton/NKA/Obsidian/Automation-Projects/Nicka-Notes/shared/news"
 node migrate-profiles.mjs
 ```
 
-Moves current parent files into `work/` and seeds empty `personal/`. Idempotent. Refuses if both parent and `work/sources.json` exist.
+Moves current parent files into `work/` and seeds empty `personal/`. Idempotent. Refuses if both parent and `work/sources.json` exist. Already applied on the live vault.
 
 ## Test
 

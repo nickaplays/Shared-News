@@ -19,11 +19,11 @@ describe("resolveNewsDir", () => {
     assert.equal(DEFAULT_NEWS_PROFILE, "work");
   });
 
-  test("parent sources only resolves work to parent", async () => {
+  test("work always resolves under work/ even if parent sources exist", async () => {
     const root = await makeRoot();
     await writeFile(path.join(root, "sources.json"), "{}");
     assert.deepEqual(await resolveNewsDir({ newsRoot: root }), {
-      storeDir: root,
+      storeDir: path.join(root, "work"),
       profile: "work",
     });
   });

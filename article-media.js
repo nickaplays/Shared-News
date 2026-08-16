@@ -1,5 +1,6 @@
 const IMG_SRC_RE = /<img[^>]+src=["']([^"']+)["']/i;
 const IMAGE_EXT_RE = /\.(jpe?g|png|webp|gif)(\?|$)/i;
+const SMALL_SEGMENT_RE = /^small\.(jpe?g|png|webp|gif)$/i;
 
 function xmlText(value) {
   if (value == null) return "";
@@ -40,9 +41,30 @@ function mediaThumbUrl(mediaGroup) {
   return bestUrl;
 }
 
+/**
+ * @param {unknown} url
+ * @returns {unknown}
+ */
+export function preferLargeImageUrl(url) {
+  if (typeof url !== "string") return url;
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  const parts = parsed.pathname.split("/");
+  const last = parts[parts.length - 1] || "";
+  if (!SMALL_SEGMENT_RE.test(last)) return url;
+  const ext = last.slice(last.lastIndexOf(".") + 1);
+  parts[parts.length - 1] = `large.${ext}`;
+  parsed.pathname = parts.join("/");
+  return parsed.toString();
+}
+
 export function extractImageUrl(item) {
   const fromMedia = mediaThumbUrl(item?.mediaGroup);
-  if (fromMedia) return fromMedia;
+  if (fromMedia) return preferLargeImageUrl(fromMedia);
 
   const enc = item?.enclosure;
   if (enc) {
@@ -52,7 +74,7 @@ export function extractImageUrl(item) {
       (!type && IMAGE_EXT_RE.test(String(enc.url || "")));
     if (isImage) {
       const u = firstHttps(enc.url);
-      if (u) return u;
+      if (u) return preferLargeImageUrl(u);
     }
   }
 
@@ -60,14 +82,14 @@ export function extractImageUrl(item) {
     const u = firstHttps(
       item.mediaThumbnail[0]?.$?.url ?? item.mediaThumbnail[0]?.url,
     );
-    if (u) return u;
+    if (u) return preferLargeImageUrl(u);
   }
 
   for (const field of [item?.content, item?.summary, item?.description]) {
     const match = String(field ?? "").match(IMG_SRC_RE);
     if (match) {
       const u = firstHttps(match[1]);
-      if (u) return u;
+      if (u) return preferLargeImageUrl(u);
     }
   }
   return undefined;

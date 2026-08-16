@@ -5,6 +5,7 @@ import {
   extractImageUrl,
   extractSummary,
   plainText,
+  preferLargeImageUrl,
 } from "./article-media.js";
 
 describe("plainText", () => {
@@ -13,6 +14,51 @@ describe("plainText", () => {
   });
   test("slices to maxLength", () => {
     assert.equal(plainText("abcdefghij", 5), "abcde");
+  });
+});
+
+describe("preferLargeImageUrl", () => {
+  test("rewrites trailing small.jpg to large.jpg", () => {
+    assert.equal(
+      preferLargeImageUrl(
+        "https://images.pushsquare.com/b624c5d5d590a/small.jpg",
+      ),
+      "https://images.pushsquare.com/b624c5d5d590a/large.jpg",
+    );
+  });
+
+  test("preserves query and hash", () => {
+    assert.equal(
+      preferLargeImageUrl("https://cdn.example/x/small.png?w=1#h"),
+      "https://cdn.example/x/large.png?w=1#h",
+    );
+  });
+
+  test("is case-insensitive on the small segment", () => {
+    assert.equal(
+      preferLargeImageUrl("https://cdn.example/x/SMALL.JPEG"),
+      "https://cdn.example/x/large.JPEG",
+    );
+  });
+
+  test("leaves non-matching paths alone", () => {
+    assert.equal(
+      preferLargeImageUrl("https://cdn.example/small-thumb.jpg"),
+      "https://cdn.example/small-thumb.jpg",
+    );
+    assert.equal(
+      preferLargeImageUrl("https://cdn.example/small/foo.jpg"),
+      "https://cdn.example/small/foo.jpg",
+    );
+    assert.equal(
+      preferLargeImageUrl("https://i.ytimg.com/vi/abc/hqdefault.jpg"),
+      "https://i.ytimg.com/vi/abc/hqdefault.jpg",
+    );
+  });
+
+  test("returns non-strings unchanged", () => {
+    assert.equal(preferLargeImageUrl(undefined), undefined);
+    assert.equal(preferLargeImageUrl(null), null);
   });
 });
 
@@ -94,6 +140,18 @@ describe("extractImageUrl", () => {
         enclosure: { url: "https://cdn.example/photo.webp" },
       }),
       "https://cdn.example/photo.webp",
+    );
+  });
+
+  test("rewrites PushSquare-style small enclosure to large", () => {
+    assert.equal(
+      extractImageUrl({
+        enclosure: {
+          url: "https://images.pushsquare.com/b624c5d5d590a/small.jpg",
+          type: "image/jpeg",
+        },
+      }),
+      "https://images.pushsquare.com/b624c5d5d590a/large.jpg",
     );
   });
 });

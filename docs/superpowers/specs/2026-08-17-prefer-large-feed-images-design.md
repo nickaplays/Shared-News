@@ -1,7 +1,7 @@
 # Shared News — Prefer large feed images
 
 > **Date:** 2026-08-17  
-> **Status:** Spec — approved for planning  
+> **Status:** Spec — implemented  
 > **App:** Shared News (package)  
 > **Repos:** `/Users/nickadenton/NKA/Automation/Cursor/Shared-News`  
 > **Approach:** Pure path rewrite at extract + enrich upgrade (no HEAD)

@@ -173,6 +173,69 @@ describe("upsertArticles", () => {
     assert.equal(row.imageUrl, "https://cdn.example/old.jpg");
   });
 
+  test("upgrades existing small imageUrl to large on re-ingest", () => {
+    const existing = [
+      {
+        url: "https://a.example/1",
+        title: "A",
+        date: "2026-01-01T00:00:00.000Z",
+        source: "T",
+        sourceId: "t",
+        engine: "roundup",
+        summary: "Kept",
+        tags: [],
+        category: "rss",
+        processedAt: "2026-01-01T00:00:00.000Z",
+        imageUrl: "https://images.pushsquare.com/abc/small.jpg",
+      },
+    ];
+    const incoming = [
+      {
+        ...existing[0],
+        imageUrl: "https://images.pushsquare.com/abc/large.jpg",
+      },
+    ];
+    const result = upsertArticles(existing, incoming, {
+      maxNew: 0,
+      maxRetain: 200,
+    });
+    assert.equal(result.inserted, 0);
+    assert.equal(result.updated, 1);
+    const row = result.articles.find((a) => a.url === "https://a.example/1");
+    assert.equal(
+      row.imageUrl,
+      "https://images.pushsquare.com/abc/large.jpg",
+    );
+    assert.equal(row.summary, "Kept");
+  });
+
+  test("upgrades small imageUrl even when incoming omits imageUrl", () => {
+    const existing = [
+      {
+        url: "https://a.example/1",
+        title: "A",
+        date: "2026-01-01T00:00:00.000Z",
+        source: "T",
+        sourceId: "t",
+        engine: "roundup",
+        summary: "Kept",
+        tags: [],
+        category: "rss",
+        processedAt: "2026-01-01T00:00:00.000Z",
+        imageUrl: "https://cdn.example/x/small.webp",
+      },
+    ];
+    const incoming = [{ ...existing[0] }];
+    delete incoming[0].imageUrl;
+    const result = upsertArticles(existing, incoming, {
+      maxNew: 0,
+      maxRetain: 200,
+    });
+    assert.equal(result.updated, 1);
+    const row = result.articles.find((a) => a.url === "https://a.example/1");
+    assert.equal(row.imageUrl, "https://cdn.example/x/large.webp");
+  });
+
   test("respects maxNew and maxRetain", () => {
     const existing = [];
     const incoming = Array.from({ length: 10 }, (_, i) => ({

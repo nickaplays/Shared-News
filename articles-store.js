@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { preferLargeImageUrl } from "./article-media.js";
 import { normalizeUrl } from "./normalize-url.js";
 
 /**
@@ -86,6 +87,16 @@ export function upsertArticles(existing, incoming, { maxNew, maxRetain }) {
       if (!prev.imageUrl && article.imageUrl) {
         next.imageUrl = article.imageUrl;
         changed = true;
+      }
+      if (prev.imageUrl) {
+        const preferred = preferLargeImageUrl(prev.imageUrl);
+        if (
+          typeof preferred === "string" &&
+          preferred !== prev.imageUrl
+        ) {
+          next.imageUrl = preferred;
+          changed = true;
+        }
       }
       if (changed) {
         byUrl.set(normalizedUrl, next);

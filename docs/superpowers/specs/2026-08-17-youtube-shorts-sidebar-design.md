@@ -1,7 +1,7 @@
 # Shared News — YouTube Shorts synthetic sidebar
 
 > **Date:** 2026-08-17  
-> **Status:** Spec — approved for planning  
+> **Status:** Spec — implemented  
 > **App:** Dev Launchpad + Gemini Twins (News UI); Shared News vault unchanged  
 > **Repos:**  
 > - `/Users/nickadenton/NKA/Automation/Cursor/Dev-Launcher`  

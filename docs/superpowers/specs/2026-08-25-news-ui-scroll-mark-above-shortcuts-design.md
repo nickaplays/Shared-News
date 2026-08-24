@@ -1,7 +1,7 @@
 # Shared News — Feed UX: scroll reset, Mark above, J/K, Fetch Now only
 
 > **Date:** 2026-08-25  
-> **Status:** Spec — awaiting implementation  
+> **Status:** Spec — implemented  
 > **App:** Dev Launchpad + Gemini Twins (News UI); Shared News ingest/schema unchanged  
 > **Repos:**  
 > - `/Users/nickadenton/NKA/Automation/Cursor/Dev-Launcher`  

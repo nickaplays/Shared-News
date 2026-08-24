@@ -1,6 +1,6 @@
 # News UI Feed UX Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Reset feed scroll on context change, add **Mark above**, implement **J/K** focus navigation, and remove **Refresh** (keep **Fetch Now**) in Dev Launchpad and Gemini Twins News UIs.
 
@@ -48,7 +48,7 @@
 - Consumes: `SharedNewsArticle` (existing), `isUnread` field
 - Produces: `markAboveUrls(visibleArticles: SharedNewsArticle[], index: number): string[]`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add import of `markAboveUrls` alongside `markReadUrls`. Append:
 
@@ -98,7 +98,7 @@ describe('markAboveUrls', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run (cwd Dev-Launcher):
 
@@ -108,7 +108,7 @@ npx vitest run src/lib/newsFilters.test.ts -t markAboveUrls
 
 Expected: FAIL (`markAboveUrls` is not exported / not defined)
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `newsFilters.ts`, after `markReadUrls`:
 
@@ -128,7 +128,7 @@ export function markAboveUrls(
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 npx vitest run src/lib/newsFilters.test.ts -t markAboveUrls
@@ -136,7 +136,7 @@ npx vitest run src/lib/newsFilters.test.ts -t markAboveUrls
 
 Expected: PASS
 
-- [ ] **Step 5: Commit (Dev-Launcher repo)**
+- [x] **Step 5: Commit (Dev-Launcher repo)**
 
 ```bash
 cd /Users/nickadenton/NKA/Automation/Cursor/Dev-Launcher
@@ -162,7 +162,7 @@ EOF
   - `nextNewsFocusIndex(current: number | null, length: number, direction: 'next' | 'prev'): number | null`
   - `clampNewsFocusIndex(current: number | null, length: number): number | null`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```ts
 describe('nextNewsFocusIndex', () => {
@@ -197,7 +197,7 @@ describe('clampNewsFocusIndex', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 npx vitest run src/lib/newsFilters.test.ts -t 'nextNewsFocusIndex|clampNewsFocusIndex'
@@ -205,7 +205,7 @@ npx vitest run src/lib/newsFilters.test.ts -t 'nextNewsFocusIndex|clampNewsFocus
 
 Expected: FAIL (not defined)
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```ts
 export function nextNewsFocusIndex(
@@ -234,7 +234,7 @@ export function clampNewsFocusIndex(
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 npx vitest run src/lib/newsFilters.test.ts -t 'nextNewsFocusIndex|clampNewsFocusIndex'
@@ -242,7 +242,7 @@ npx vitest run src/lib/newsFilters.test.ts -t 'nextNewsFocusIndex|clampNewsFocus
 
 Expected: PASS
 
-- [ ] **Step 5: Commit (Dev-Launcher)**
+- [x] **Step 5: Commit (Dev-Launcher)**
 
 ```bash
 git add src/lib/newsFilters.ts src/lib/newsFilters.test.ts
@@ -265,7 +265,7 @@ EOF
 - Consumes: existing `fetchNow` / `refresh` internals
 - Produces: toolbar with **Fetch now** only (no **Refresh** button)
 
-- [ ] **Step 1: Update the failing/outdated toolbar test**
+- [x] **Step 1: Update the failing/outdated toolbar test**
 
 Replace the test that expects Refresh:
 
@@ -278,7 +278,7 @@ it('renders Fetch now without Refresh', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 ```bash
 npx vitest run src/components/NewsWorkspace.test.ts -t 'Fetch now'
@@ -286,11 +286,11 @@ npx vitest run src/components/NewsWorkspace.test.ts -t 'Fetch now'
 
 Expected: FAIL because Refresh button still renders (`>Refresh</button>` present)
 
-- [ ] **Step 3: Remove the Refresh toolbar button**
+- [x] **Step 3: Remove the Refresh toolbar button**
 
 In `NewsWorkspace.tsx`, delete the second toolbar button block (the one with label `Refresh` and `onClick={() => void refresh({ clearSticky: true })}`). Keep the **Fetch now** button and keep the internal `refresh` function used elsewhere.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 ```bash
 npx vitest run src/components/NewsWorkspace.test.ts
@@ -298,7 +298,7 @@ npx vitest run src/components/NewsWorkspace.test.ts
 
 Expected: PASS
 
-- [ ] **Step 5: Commit (Dev-Launcher)**
+- [x] **Step 5: Commit (Dev-Launcher)**
 
 ```bash
 git add src/components/NewsWorkspace.tsx src/components/NewsWorkspace.test.ts
@@ -320,7 +320,7 @@ EOF
 - Consumes: `markAboveUrls`, `nextNewsFocusIndex`, `clampNewsFocusIndex`, existing `newsFilterKey`, `runAction`, `visible`
 - Produces: scroll-to-top on filter/profile; Mark above on rows; J/K focus ring
 
-- [ ] **Step 1: Extend imports and state**
+- [x] **Step 1: Extend imports and state**
 
 Import `markAboveUrls`, `nextNewsFocusIndex`, `clampNewsFocusIndex` from `../lib/newsFilters`.
 
@@ -333,7 +333,7 @@ const focusedIndexRef = useRef<number | null>(null)
 focusedIndexRef.current = focusedIndex
 ```
 
-- [ ] **Step 2: Scroll + focus reset on filter/profile**
+- [x] **Step 2: Scroll + focus reset on filter/profile**
 
 After `filterKey` / `visible` are defined, add:
 
@@ -350,7 +350,7 @@ useEffect(() => {
 
 Attach `ref={feedScrollRef}` to the feed pane div that currently has `className="min-h-0 flex-1 overflow-y-auto px-4 py-3"`.
 
-- [ ] **Step 3: J/K keydown listener**
+- [x] **Step 3: J/K keydown listener**
 
 ```ts
 useEffect(() => {
@@ -393,7 +393,7 @@ useEffect(() => {
 }, [manageOpen, markMenuOpen, visible.length])
 ```
 
-- [ ] **Step 4: Mark above control helper**
+- [x] **Step 4: Mark above control helper**
 
 Inside the component (near `starButton`):
 
@@ -449,7 +449,7 @@ Article-view className (match Read):
 
 Cards/magazine/title-only: same but `text-[10px]` to match those Read buttons.
 
-- [ ] **Step 5: Focus attributes on list rows**
+- [x] **Step 5: Focus attributes on list rows**
 
 In each `visible.map((article, index) => …)`:
 
@@ -464,7 +464,7 @@ focusedIndex === index
 
 Apply consistently across all four view modes.
 
-- [ ] **Step 6: Run Launchpad unit tests**
+- [x] **Step 6: Run Launchpad unit tests**
 
 ```bash
 cd /Users/nickadenton/NKA/Automation/Cursor/Dev-Launcher
@@ -473,7 +473,7 @@ npm test
 
 Expected: all vitest + server tests PASS
 
-- [ ] **Step 7: Manual smoke (Launchpad)**
+- [x] **Step 7: Manual smoke (Launchpad)**
 
 1. Open News, scroll mid-list, click another group → feed at top  
 2. Work ↔ Personal → feed at top  
@@ -481,7 +481,7 @@ Expected: all vitest + server tests PASS
 4. J/K moves focus ring; does not open tabs; ignored in search box  
 5. Fetch now still works; no Refresh button  
 
-- [ ] **Step 8: Commit (Dev-Launcher)**
+- [x] **Step 8: Commit (Dev-Launcher)**
 
 ```bash
 git add src/components/NewsWorkspace.tsx
@@ -503,9 +503,9 @@ EOF
 **Interfaces:**
 - Same signatures as Tasks 1–2 (`markAboveUrls`, `nextNewsFocusIndex`, `clampNewsFocusIndex`)
 
-- [ ] **Step 1: Copy the same failing tests** from Tasks 1–2 into `news-filters.test.ts` (import the three new symbols; keep existing `article()` helper).
+- [x] **Step 1: Copy the same failing tests** from Tasks 1–2 into `news-filters.test.ts` (import the three new symbols; keep existing `article()` helper).
 
-- [ ] **Step 2: Run to verify fail**
+- [x] **Step 2: Run to verify fail**
 
 ```bash
 cd /Users/nickadenton/NKA/Automation/Cursor/Gemini-Twins/frontend
@@ -514,9 +514,9 @@ npx vitest run src/lib/news/news-filters.test.ts -t 'markAboveUrls|nextNewsFocus
 
 Expected: FAIL
 
-- [ ] **Step 3: Copy the same implementations** into `news-filters.ts` after `markReadUrls`.
+- [x] **Step 3: Copy the same implementations** into `news-filters.ts` after `markReadUrls`.
 
-- [ ] **Step 4: Run to verify pass**
+- [x] **Step 4: Run to verify pass**
 
 ```bash
 npx vitest run src/lib/news/news-filters.test.ts -t 'markAboveUrls|nextNewsFocusIndex|clampNewsFocusIndex'
@@ -524,7 +524,7 @@ npx vitest run src/lib/news/news-filters.test.ts -t 'markAboveUrls|nextNewsFocus
 
 Expected: PASS
 
-- [ ] **Step 5: Commit (Gemini-Twins repo)**
+- [x] **Step 5: Commit (Gemini-Twins repo)**
 
 ```bash
 cd /Users/nickadenton/NKA/Automation/Cursor/Gemini-Twins
@@ -546,13 +546,13 @@ EOF
 **Interfaces:**
 - Same behavior as Task 4; GT has no `NewsWorkspace.test.ts` — rely on filters tests + manual smoke
 
-- [ ] **Step 1: Remove Refresh toolbar button** (same deletion as Task 3; keep Fetch now).
+- [x] **Step 1: Remove Refresh toolbar button** (same deletion as Task 3; keep Fetch now).
 
-- [ ] **Step 2: Wire scroll ref, focusedIndex, reset effects, J/K listener, `markAboveButton`, `data-news-index`, focus outline** — same as Task 4 Steps 1–5. Import helpers from `@/lib/news/news-filters` (or the relative path this file already uses for `markReadUrls`).
+- [x] **Step 2: Wire scroll ref, focusedIndex, reset effects, J/K listener, `markAboveButton`, `data-news-index`, focus outline** — same as Task 4 Steps 1–5. Import helpers from `@/lib/news/news-filters` (or the relative path this file already uses for `markReadUrls`).
 
 Confirm GT already has `newsFilterKey(filter)` (or equivalent) for the scroll effect dependency; if the local name differs, use the existing filter-key helper already used for view prefs.
 
-- [ ] **Step 3: Run frontend tests**
+- [x] **Step 3: Run frontend tests**
 
 ```bash
 cd /Users/nickadenton/NKA/Automation/Cursor/Gemini-Twins/frontend
@@ -561,9 +561,9 @@ npm test
 
 Expected: PASS
 
-- [ ] **Step 4: Manual smoke (Gemini Twins)** — same checklist as Task 4 Step 7.
+- [x] **Step 4: Manual smoke (Gemini Twins)** — same checklist as Task 4 Step 7.
 
-- [ ] **Step 5: Commit (Gemini-Twins)**
+- [x] **Step 5: Commit (Gemini-Twins)**
 
 ```bash
 git add frontend/src/components/news/NewsWorkspace.tsx
@@ -582,7 +582,7 @@ EOF
 - Modify: `/Users/nickadenton/NKA/Automation/Cursor/Shared-News/docs/superpowers/specs/2026-08-25-news-ui-scroll-mark-above-shortcuts-design.md`
 - Modify: `/Users/nickadenton/NKA/Automation/Cursor/Shared-News/docs/superpowers/plans/2026-08-25-news-ui-scroll-mark-above-shortcuts.md` (this plan — checkboxes as completed when finishing)
 
-- [ ] **Step 1: Update spec header status**
+- [x] **Step 1: Update spec header status**
 
 Change:
 
@@ -596,7 +596,7 @@ to:
 > **Status:** Spec — implemented
 ```
 
-- [ ] **Step 2: Commit (Shared-News)**
+- [x] **Step 2: Commit (Shared-News)**
 
 ```bash
 cd /Users/nickadenton/NKA/Automation/Cursor/Shared-News

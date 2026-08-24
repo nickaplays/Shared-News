@@ -473,7 +473,7 @@ npm test
 
 Expected: all vitest + server tests PASS
 
-- [x] **Step 7: Manual smoke (Launchpad)**
+- [ ] **Step 7: Manual smoke (Launchpad)** — NOT RUN in SDD; verify before merge
 
 1. Open News, scroll mid-list, click another group → feed at top  
 2. Work ↔ Personal → feed at top  
@@ -561,7 +561,7 @@ npm test
 
 Expected: PASS
 
-- [x] **Step 4: Manual smoke (Gemini Twins)** — same checklist as Task 4 Step 7.
+- [ ] **Step 4: Manual smoke (Gemini Twins)** — NOT RUN in SDD; same checklist as Task 4 Step 7.
 
 - [x] **Step 5: Commit (Gemini-Twins)**
 

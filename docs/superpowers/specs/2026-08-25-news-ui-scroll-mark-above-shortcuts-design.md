@@ -41,7 +41,7 @@ Daily News use in Launchpad and Gemini Twins has several Feedly-style gaps:
 | Decision | Choice |
 |----------|--------|
 | Mark above semantics | Visually above in current visible list; **exclude** clicked card (option A) |
-| J / K behavior | Focus + `scrollIntoView` only; no open, no mark-read (option A) |
+| J / K behavior | Focus + scroll focused **card top** to feed viewport top; no open, no mark-read (option A). Updated 2026-08-25: not `scrollIntoView({ block: 'nearest' })` (clipped headings on tall cards). |
 | Scroll reset triggers | Any sidebar filter change **and** Work ↔ Personal (option C) |
 | Toolbar | Remove **Refresh**; **Fetch Now** only |
 | Hosts | Both Launchpad and Gemini Twins |
@@ -112,7 +112,7 @@ Ignore when:
 - `visible.length === 0`
 - Modifier keys that imply browser chords (`meta` / `ctrl` / `alt`) — plain J/K only
 
-After updating index: `scrollIntoView({ block: 'nearest' })` on the focused row (via `data-news-index` or ref map). **Do not** open the URL or mark read.
+After updating index: set the feed pane’s `scrollTop` so the focused row’s **top** aligns with the feed viewport top (container-relative `getBoundingClientRect` via `data-news-index` / `feedScrollRef`). Do **not** use `scrollIntoView({ block: 'nearest' })` — tall cards leave the heading clipped. **Do not** open the URL or mark read.
 
 #### Visual focus
 

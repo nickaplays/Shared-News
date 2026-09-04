@@ -30,8 +30,8 @@ node ingest.mjs --profile=personal
 | `--profile=work\|personal` | Store under `$SHARED_NEWS_DIR/<profile>/` (default `work`) |
 | `--dir=/abs/store` | Absolute store path; ignores `--profile` |
 | `--feed-id=ID` | Single enabled feed |
-| `--max-new=N` | Insert cap (default 8) |
-| `--max-retain=N` | Retain cap (default 200) |
+| `--max-new=N` | Optional per-feed insert cap (default: all missing items from each feed's RSS snapshot) |
+| `--max-retain=N` | Global retain cap with per-source floor (default 500, min 15 per source) |
 
 `run-ingest.sh` (launchd every 6h) runs nested work then personal profiles.
 

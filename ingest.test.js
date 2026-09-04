@@ -13,6 +13,7 @@ import { parseIngestArgs, runIngest } from "./ingest.mjs";
 import { resolveNewsDir } from "./resolve-news-dir.js";
 import { normalizeUrl } from "./normalize-url.js";
 import {
+  applyRetainPolicy,
   readArticlesJsonl,
   writeArticlesJsonl,
   upsertArticles,
@@ -236,7 +237,7 @@ describe("upsertArticles", () => {
     assert.equal(row.imageUrl, "https://cdn.example/x/large.webp");
   });
 
-  test("respects maxNew and maxRetain", () => {
+  test("respects maxNew per batch", () => {
     const existing = [];
     const incoming = Array.from({ length: 10 }, (_, i) => ({
       url: `https://a.example/${i}`,
@@ -252,10 +253,57 @@ describe("upsertArticles", () => {
     }));
     const result = upsertArticles(existing, incoming, {
       maxNew: 8,
-      maxRetain: 5,
+      applyRetain: false,
     });
     assert.equal(result.inserted, 8);
-    assert.equal(result.articles.length, 5);
+    assert.equal(result.articles.length, 8);
+  });
+
+  test("applyRetainPolicy keeps a per-source floor", () => {
+    const articles = [
+      {
+        url: "https://loud.example/1",
+        title: "L1",
+        date: "2026-08-10T00:00:00.000Z",
+        source: "Loud",
+        sourceId: "loud",
+        engine: "roundup",
+        summary: "",
+        tags: [],
+        category: "rss",
+        processedAt: "2026-08-10T00:00:00.000Z",
+      },
+      {
+        url: "https://loud.example/2",
+        title: "L2",
+        date: "2026-08-09T00:00:00.000Z",
+        source: "Loud",
+        sourceId: "loud",
+        engine: "roundup",
+        summary: "",
+        tags: [],
+        category: "rss",
+        processedAt: "2026-08-09T00:00:00.000Z",
+      },
+      {
+        url: "https://quiet.example/1",
+        title: "Q1",
+        date: "2026-08-01T00:00:00.000Z",
+        source: "Quiet",
+        sourceId: "quiet",
+        engine: "roundup",
+        summary: "",
+        tags: [],
+        category: "rss",
+        processedAt: "2026-08-01T00:00:00.000Z",
+      },
+    ];
+    const retained = applyRetainPolicy(articles, {
+      maxRetain: 2,
+      minPerSource: 1,
+    });
+    assert.equal(retained.length, 2);
+    assert.ok(retained.some((article) => article.sourceId === "quiet"));
   });
 });
 
@@ -305,15 +353,13 @@ describe("parseIngestArgs", () => {
 
   test("uses default article limits", () => {
     assert.deepEqual(parseIngestArgs([]), {
-      maxNew: 8,
-      maxRetain: 200,
+      maxRetain: 500,
     });
   });
 
   test("reads profile", () => {
     assert.deepEqual(parseIngestArgs(["--profile=personal"]), {
-      maxNew: 8,
-      maxRetain: 200,
+      maxRetain: 500,
       profile: "personal",
     });
   });
@@ -538,7 +584,7 @@ describe("runIngest", () => {
     assert.equal(lastRun.feedId, "missing");
   });
 
-  test("respects maxNew", async () => {
+  test("respects maxNew per feed", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "shared-news-max-new-"));
     await writeFile(
       path.join(dir, "sources.json"),
@@ -570,6 +616,78 @@ describe("runIngest", () => {
     assert.equal(result.articlesInserted, 2);
     const articles = await readArticlesJsonl(path.join(dir, "articles.jsonl"));
     assert.equal(articles.length, 2);
+  });
+
+  test("syncs missing items per feed without cross-feed starvation", async () => {
+    const dir = await mkdtemp(
+      path.join(tmpdir(), "shared-news-per-feed-sync-"),
+    );
+    await writeFile(
+      path.join(dir, "sources.json"),
+      JSON.stringify({
+        feeds: [
+          {
+            id: "loud-feed",
+            label: "Loud",
+            kind: "rss",
+            url: "https://feeds.example/loud",
+            enabled: true,
+          },
+          {
+            id: "quiet-feed",
+            label: "Quiet",
+            kind: "rss",
+            url: "https://feeds.example/quiet",
+            enabled: true,
+          },
+        ],
+      }),
+    );
+
+    const result = await runIngest({
+      newsDir: dir,
+      fetchFeed: async (_url, feed) => {
+        if (feed.id === "loud-feed") {
+          return {
+            items: Array.from({ length: 12 }, (_, index) => ({
+              title: `Loud ${index}`,
+              link: `https://loud.example/${index}`,
+              isoDate: `2026-08-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
+            })),
+          };
+        }
+        return {
+          items: [
+            {
+              title: "Quiet 1",
+              link: "https://quiet.example/1",
+              isoDate: "2026-08-01T00:00:00.000Z",
+            },
+            {
+              title: "Quiet 2",
+              link: "https://quiet.example/2",
+              isoDate: "2026-08-02T00:00:00.000Z",
+            },
+            {
+              title: "Quiet 3",
+              link: "https://quiet.example/3",
+              isoDate: "2026-08-03T00:00:00.000Z",
+            },
+          ],
+        };
+      },
+    });
+
+    assert.equal(result.articlesInserted, 15);
+    const articles = await readArticlesJsonl(path.join(dir, "articles.jsonl"));
+    assert.equal(
+      articles.filter((article) => article.sourceId === "quiet-feed").length,
+      3,
+    );
+    assert.equal(
+      articles.filter((article) => article.sourceId === "loud-feed").length,
+      12,
+    );
   });
 
   test("extracts imageUrl and summary from YouTube-shaped mediaGroup item", async () => {

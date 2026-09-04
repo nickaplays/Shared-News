@@ -5,6 +5,9 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import Parser from "rss-parser";
 import {
+  applyRetainPolicy,
+  DEFAULT_MAX_RETAIN,
+  DEFAULT_MIN_PER_SOURCE,
   readArticlesJsonl,
   writeArticlesJsonl,
   upsertArticles,
@@ -34,10 +37,14 @@ export function parseIngestArgs(argv) {
       }),
   );
   const args = {
-    maxNew: values["max-new"] === undefined ? 8 : Number(values["max-new"]),
     maxRetain:
-      values["max-retain"] === undefined ? 200 : Number(values["max-retain"]),
+      values["max-retain"] === undefined
+        ? DEFAULT_MAX_RETAIN
+        : Number(values["max-retain"]),
   };
+  if (values["max-new"] !== undefined) {
+    args.maxNew = Number(values["max-new"]);
+  }
   if (values.dir !== undefined) {
     args.newsDir = values.dir;
   }
@@ -142,6 +149,7 @@ async function fetchFeedWithTimeout(fetchFeed, feed, timeoutMs) {
  *   feedId?: string,
  *   maxNew?: number,
  *   maxRetain?: number,
+ *   minPerSource?: number,
  *   profile?: "work" | "personal" | null
  * }} options
  */
@@ -150,8 +158,9 @@ export async function runIngest({
   fetchFeed = fetchDefaultFeed,
   feedTimeoutMs = DEFAULT_FEED_TIMEOUT_MS,
   feedId,
-  maxNew = 8,
-  maxRetain = 200,
+  maxNew,
+  maxRetain = DEFAULT_MAX_RETAIN,
+  minPerSource = DEFAULT_MIN_PER_SOURCE,
   profile = null,
 }) {
   if (!newsDir || !path.isAbsolute(newsDir)) {
@@ -191,8 +200,11 @@ export async function runIngest({
       throw new Error(`Enabled feed not found: ${feedId}`);
     }
     const processedAt = new Date().toISOString();
-    const candidates = [];
     const feedFailures = [];
+    const articlesPath = path.join(newsDir, "articles.jsonl");
+    let articles = await readArticlesJsonl(articlesPath);
+    let articlesInserted = 0;
+    let articlesUpdated = 0;
 
     for (const feed of feeds) {
       feedsAttempted += 1;
@@ -203,11 +215,12 @@ export async function runIngest({
           feedTimeoutMs,
         );
         feedsSucceeded += 1;
+        const feedCandidates = [];
         for (const item of parsed?.items ?? []) {
           try {
             const article = toArticle(item, feed, processedAt);
             if (article) {
-              candidates.push(article);
+              feedCandidates.push(article);
             }
           } catch (error) {
             const message =
@@ -217,6 +230,15 @@ export async function runIngest({
             );
           }
         }
+        feedCandidates.sort((a, b) => new Date(b.date) - new Date(a.date));
+        articlesConsidered += feedCandidates.length;
+        const result = upsertArticles(articles, feedCandidates, {
+          maxNew,
+          applyRetain: false,
+        });
+        articles = result.articles;
+        articlesInserted += result.inserted;
+        articlesUpdated += result.updated;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         feedFailures.push(`${feed.id}: ${message}`);
@@ -224,15 +246,10 @@ export async function runIngest({
       }
     }
 
-    candidates.sort((a, b) => new Date(b.date) - new Date(a.date));
-    const articlesPath = path.join(newsDir, "articles.jsonl");
-    const existing = await readArticlesJsonl(articlesPath);
-    const result = upsertArticles(existing, candidates, {
-      maxNew,
-      maxRetain,
-    });
-    articlesConsidered = result.considered;
     const allFeedsFailed = feedsAttempted > 0 && feedsSucceeded === 0;
+    if (!allFeedsFailed) {
+      articles = applyRetainPolicy(articles, { maxRetain, minPerSource });
+    }
 
     // Concurrent Launchpad edits: fail before any prune writes.
     const userStateMtimeAfter = await readUserStateMtime(userStatePath);
@@ -256,7 +273,7 @@ export async function runIngest({
         userState.byUrl && typeof userState.byUrl === "object"
           ? userState.byUrl
           : {};
-      const pruned = pruneReadArticles(result.articles, byUrl, {
+      const pruned = pruneReadArticles(articles, byUrl, {
         maxAgeDays: 30,
       });
       articlesPruned = pruned.articlesPruned;
@@ -296,8 +313,8 @@ export async function runIngest({
       feedsAttempted,
       feedsSucceeded,
       articlesConsidered,
-      articlesInserted: allFeedsFailed ? 0 : result.inserted,
-      articlesUpdated: allFeedsFailed ? 0 : result.updated,
+      articlesInserted: allFeedsFailed ? 0 : articlesInserted,
+      articlesUpdated: allFeedsFailed ? 0 : articlesUpdated,
       articlesPruned,
       userStatePruned,
       failedFeeds,

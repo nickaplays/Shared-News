@@ -13,6 +13,11 @@ import {
   upsertArticles,
 } from "./articles-store.js";
 import { extractImageUrl, extractSummary } from "./article-media.js";
+import {
+  ensureArchiveLayout,
+  moveArticlesToArchive,
+  readSeen,
+} from "./archive-store.js";
 import { pruneReadArticles } from "./prune-read.js";
 import { resolveNewsDir } from "./resolve-news-dir.js";
 
@@ -150,7 +155,8 @@ async function fetchFeedWithTimeout(fetchFeed, feed, timeoutMs) {
  *   maxNew?: number,
  *   maxRetain?: number,
  *   minPerSource?: number,
- *   profile?: "work" | "personal" | null
+ *   profile?: "work" | "personal" | null,
+ *   nowMs?: number
  * }} options
  */
 export async function runIngest({
@@ -162,12 +168,13 @@ export async function runIngest({
   maxRetain = DEFAULT_MAX_RETAIN,
   minPerSource = DEFAULT_MIN_PER_SOURCE,
   profile = null,
+  nowMs = Date.now(),
 }) {
   if (!newsDir || !path.isAbsolute(newsDir)) {
     throw new Error("SHARED_NEWS_DIR or --dir= must be an absolute path");
   }
 
-  const startedAt = new Date().toISOString();
+  const startedAt = new Date(nowMs).toISOString();
   const mode = feedId === undefined ? "full" : "feed";
   const selectedFeedId = feedId ?? null;
   const userStatePath = path.join(newsDir, "user-state.json");
@@ -177,6 +184,8 @@ export async function runIngest({
   let articlesConsidered = 0;
 
   try {
+    await ensureArchiveLayout(newsDir);
+    const seen = await readSeen(newsDir);
     let sourcesRaw;
     try {
       sourcesRaw = await readFile(path.join(newsDir, "sources.json"), "utf8");
@@ -199,12 +208,15 @@ export async function runIngest({
     if (feedId !== undefined && feeds.length === 0) {
       throw new Error(`Enabled feed not found: ${feedId}`);
     }
-    const processedAt = new Date().toISOString();
+    const processedAt = startedAt;
     const feedFailures = [];
     const articlesPath = path.join(newsDir, "articles.jsonl");
     let articles = await readArticlesJsonl(articlesPath);
     let articlesInserted = 0;
     let articlesUpdated = 0;
+    let articlesSkippedSeen = 0;
+    let articlesSkippedAge = 0;
+    let sourcesDirty = false;
 
     for (const feed of feeds) {
       feedsAttempted += 1;
@@ -214,7 +226,6 @@ export async function runIngest({
           feed,
           feedTimeoutMs,
         );
-        feedsSucceeded += 1;
         const feedCandidates = [];
         for (const item of parsed?.items ?? []) {
           try {
@@ -232,13 +243,25 @@ export async function runIngest({
         }
         feedCandidates.sort((a, b) => new Date(b.date) - new Date(a.date));
         articlesConsidered += feedCandidates.length;
+        const seeded =
+          typeof feed.seededAt === "string" && feed.seededAt.trim() !== "";
         const result = upsertArticles(articles, feedCandidates, {
           maxNew,
           applyRetain: false,
+          seenByUrl: seen.byUrl,
+          seeded,
+          nowMs,
         });
         articles = result.articles;
         articlesInserted += result.inserted;
         articlesUpdated += result.updated;
+        articlesSkippedSeen += result.skippedSeen;
+        articlesSkippedAge += result.skippedAge;
+        feedsSucceeded += 1;
+        if (!seeded) {
+          feed.seededAt = startedAt;
+          sourcesDirty = true;
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         feedFailures.push(`${feed.id}: ${message}`);
@@ -247,13 +270,6 @@ export async function runIngest({
     }
 
     const allFeedsFailed = feedsAttempted > 0 && feedsSucceeded === 0;
-    if (!allFeedsFailed) {
-      const retained = applyRetainPolicy(articles, {
-        maxRetain,
-        minPerSource,
-      });
-      articles = retained.articles;
-    }
 
     // Concurrent Launchpad edits: fail before any prune writes.
     const userStateMtimeAfter = await readUserStateMtime(userStatePath);
@@ -263,6 +279,8 @@ export async function runIngest({
 
     let articlesPruned = 0;
     let userStatePruned = 0;
+    let articlesArchivedPrune = 0;
+    let articlesArchivedRetain = 0;
     if (!allFeedsFailed) {
       let userState;
       try {
@@ -273,28 +291,63 @@ export async function runIngest({
         }
         userState = { byUrl: {} };
       }
-      const byUrl =
+      let byUrl =
         userState.byUrl && typeof userState.byUrl === "object"
           ? userState.byUrl
           : {};
+      const archivedAt = startedAt;
+      const retained = applyRetainPolicy(articles, {
+        maxRetain,
+        minPerSource,
+        byUrl,
+      });
+      articles = retained.articles;
+      let retainUserStatePruned = 0;
+      if (retained.evicted.length > 0) {
+        const moved = await moveArticlesToArchive(newsDir, retained.evicted, {
+          archivedAt,
+          byUrl,
+        });
+        byUrl = moved.nextByUrl;
+        articlesArchivedRetain = moved.articlesRemoved;
+        retainUserStatePruned = moved.userStatePruned;
+      }
       const pruned = pruneReadArticles(articles, byUrl, {
         maxAgeDays: 30,
+        nowMs,
       });
-      articlesPruned = pruned.articlesPruned;
-      userStatePruned = pruned.userStatePruned;
-      await writeArticlesJsonl(articlesPath, pruned.articles);
-      if (articlesPruned > 0 || userStatePruned > 0) {
+      articles = pruned.articles;
+      if (pruned.removed.length > 0) {
+        const moved = await moveArticlesToArchive(newsDir, pruned.removed, {
+          archivedAt,
+          byUrl,
+        });
+        byUrl = moved.nextByUrl;
+        articlesArchivedPrune = moved.articlesRemoved;
+        articlesPruned = moved.articlesRemoved;
+        userStatePruned = moved.userStatePruned;
+      }
+      await writeArticlesJsonl(articlesPath, articles);
+      if (retainUserStatePruned > 0 || userStatePruned > 0) {
         await writeFile(
           userStatePath,
           `${JSON.stringify(
             {
               ...userState,
-              byUrl: pruned.byUrl,
-              updatedAt: new Date().toISOString(),
+              byUrl,
+              updatedAt: startedAt,
             },
             null,
             2,
           )}\n`,
+          "utf8",
+        );
+      }
+      if (sourcesDirty) {
+        await writeFile(
+          path.join(newsDir, "sources.json"),
+          `${JSON.stringify(sources, null, 2)}\n`,
+          "utf8",
         );
       }
     }
@@ -321,6 +374,10 @@ export async function runIngest({
       articlesUpdated: allFeedsFailed ? 0 : articlesUpdated,
       articlesPruned,
       userStatePruned,
+      articlesArchivedPrune,
+      articlesArchivedRetain,
+      articlesSkippedSeen,
+      articlesSkippedAge,
       failedFeeds,
       error: ok
         ? null
@@ -343,6 +400,10 @@ export async function runIngest({
       articlesUpdated: 0,
       articlesPruned: 0,
       userStatePruned: 0,
+      articlesArchivedPrune: 0,
+      articlesArchivedRetain: 0,
+      articlesSkippedSeen: 0,
+      articlesSkippedAge: 0,
       failedFeeds: [],
       error: error instanceof Error ? error.message : String(error),
     };

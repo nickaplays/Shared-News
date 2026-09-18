@@ -4,6 +4,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   stat,
   writeFile,
 } from "node:fs/promises";
@@ -1017,6 +1018,7 @@ describe("runIngest", () => {
     const result = await runIngest({
       newsDir: dir,
       fetchFeed: async () => ({ items: [] }),
+      nowMs: Date.parse("2026-09-18T00:00:00.000Z"),
     });
 
     assert.equal(result.ok, true);
@@ -1039,6 +1041,192 @@ describe("runIngest", () => {
     );
     assert.ok(lastRun.articlesPruned >= 1);
     assert.ok(lastRun.userStatePruned >= 1);
+    assert.equal(lastRun.articlesArchivedPrune, 1);
+    const seen = JSON.parse(
+      await readFile(path.join(dir, "archive", "seen.json"), "utf8"),
+    );
+    assert.ok(seen.byUrl[oldUrl]);
+    const archiveFiles = (await readdir(path.join(dir, "archive"))).filter(
+      (name) => name.endsWith(".jsonl"),
+    );
+    const archiveRows = (
+      await Promise.all(
+        archiveFiles.map((name) =>
+          readFile(path.join(dir, "archive", name), "utf8"),
+        ),
+      )
+    ).join("\n");
+    assert.match(archiveRows, /https:\/\/example\.com\/old-read/);
+
+    const second = await runIngest({
+      newsDir: dir,
+      fetchFeed: async () => ({
+        items: [
+          {
+            title: "Old read returns",
+            link: oldUrl,
+            isoDate: "2026-06-01T00:00:00.000Z",
+          },
+        ],
+      }),
+      nowMs: Date.parse("2026-09-19T00:00:00.000Z"),
+    });
+    assert.equal(second.articlesInserted, 0);
+    assert.equal(second.articlesSkippedSeen, 1);
+    assert.equal(
+      (await readArticlesJsonl(articlesPath)).some(
+        (article) => article.url === oldUrl,
+      ),
+      false,
+    );
+  });
+
+  test("seeds an old first snapshot then age-gates later old URLs", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "shared-news-seed-gate-"));
+    const sourcesPath = path.join(dir, "sources.json");
+    const firstOldUrl = "https://example.com/seed-old";
+    const laterOldUrl = "https://example.com/later-old";
+    await writeFile(
+      sourcesPath,
+      JSON.stringify({
+        groups: [{ id: "news", label: "News" }],
+        feeds: [
+          {
+            id: "seed-feed",
+            label: "Seed Feed",
+            engine: "roundup",
+            kind: "rss",
+            url: "https://feeds.example/seed",
+            enabled: true,
+          },
+        ],
+      }),
+    );
+
+    const first = await runIngest({
+      newsDir: dir,
+      fetchFeed: async () => ({
+        items: [
+          {
+            title: "Old seed article",
+            link: firstOldUrl,
+            isoDate: "2026-07-01T00:00:00.000Z",
+          },
+        ],
+      }),
+      nowMs: Date.parse("2026-09-18T00:00:00.000Z"),
+    });
+    assert.equal(first.articlesInserted, 1);
+    const seededSources = JSON.parse(await readFile(sourcesPath, "utf8"));
+    assert.equal(
+      seededSources.feeds[0].seededAt,
+      "2026-09-18T00:00:00.000Z",
+    );
+    assert.deepEqual(seededSources.groups, [{ id: "news", label: "News" }]);
+
+    const second = await runIngest({
+      newsDir: dir,
+      fetchFeed: async () => ({
+        items: [
+          {
+            title: "Old seed article",
+            link: firstOldUrl,
+            isoDate: "2026-07-01T00:00:00.000Z",
+          },
+          {
+            title: "Later old article",
+            link: laterOldUrl,
+            isoDate: "2026-07-02T00:00:00.000Z",
+          },
+        ],
+      }),
+      nowMs: Date.parse("2026-09-19T00:00:00.000Z"),
+    });
+    assert.equal(second.articlesInserted, 0);
+    assert.equal(second.articlesSkippedAge, 1);
+    assert.equal(
+      (await readArticlesJsonl(path.join(dir, "articles.jsonl"))).some(
+        (article) => article.url === laterOldUrl,
+      ),
+      false,
+    );
+  });
+
+  test("retain archives read articles while unread survives a low cap", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "shared-news-retain-"));
+    const articlesPath = path.join(dir, "articles.jsonl");
+    const userStatePath = path.join(dir, "user-state.json");
+    const unreadUrl = "https://example.com/unread";
+    const readUrls = [
+      "https://example.com/read-1",
+      "https://example.com/read-2",
+      "https://example.com/read-3",
+    ];
+    await writeFile(
+      path.join(dir, "sources.json"),
+      JSON.stringify({
+        feeds: [
+          {
+            id: "retain-feed",
+            label: "Retain Feed",
+            kind: "rss",
+            url: "https://feeds.example/retain",
+            enabled: true,
+          },
+        ],
+      }),
+    );
+    await writeArticlesJsonl(
+      articlesPath,
+      [unreadUrl, ...readUrls].map((url, index) => ({
+        url,
+        title: `Article ${index}`,
+        date: `2026-09-${String(10 + index).padStart(2, "0")}T00:00:00.000Z`,
+        source: "Retain Feed",
+        sourceId: "retain-feed",
+        engine: "roundup",
+        summary: "",
+        tags: [],
+        category: "rss",
+        processedAt: "2026-09-18T00:00:00.000Z",
+      })),
+    );
+    await writeFile(
+      userStatePath,
+      `${JSON.stringify({
+        version: 1,
+        byUrl: {
+          [unreadUrl]: { read: false },
+          ...Object.fromEntries(
+            readUrls.map((url) => [
+              url,
+              { read: true, readAt: "2026-09-17T00:00:00.000Z" },
+            ]),
+          ),
+        },
+      })}\n`,
+    );
+
+    const result = await runIngest({
+      newsDir: dir,
+      maxRetain: 1,
+      minPerSource: 0,
+      fetchFeed: async () => ({ items: [] }),
+      nowMs: Date.parse("2026-09-18T00:00:00.000Z"),
+    });
+
+    assert.equal(result.articlesArchivedRetain, 3);
+    assert.equal(result.articlesArchivedPrune, 0);
+    assert.deepEqual(
+      (await readArticlesJsonl(articlesPath)).map((article) => article.url),
+      [unreadUrl],
+    );
+    const seen = JSON.parse(
+      await readFile(path.join(dir, "archive", "seen.json"), "utf8"),
+    );
+    assert.ok(readUrls.every((url) => seen.byUrl[url]));
+    const userState = JSON.parse(await readFile(userStatePath, "utf8"));
+    assert.deepEqual(userState.byUrl, { [unreadUrl]: { read: false } });
   });
 
   test("records all-feed failure without replacing articles", async () => {

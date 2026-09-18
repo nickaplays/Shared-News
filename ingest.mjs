@@ -248,7 +248,11 @@ export async function runIngest({
 
     const allFeedsFailed = feedsAttempted > 0 && feedsSucceeded === 0;
     if (!allFeedsFailed) {
-      articles = applyRetainPolicy(articles, { maxRetain, minPerSource });
+      const retained = applyRetainPolicy(articles, {
+        maxRetain,
+        minPerSource,
+      });
+      articles = retained.articles;
     }
 
     // Concurrent Launchpad edits: fail before any prune writes.

@@ -298,12 +298,100 @@ describe("upsertArticles", () => {
         processedAt: "2026-08-01T00:00:00.000Z",
       },
     ];
-    const retained = applyRetainPolicy(articles, {
+    const byUrl = Object.fromEntries(
+      articles.map((article) => [article.url, { read: true }]),
+    );
+    const { articles: retained, evicted } = applyRetainPolicy(articles, {
       maxRetain: 2,
       minPerSource: 1,
+      byUrl,
     });
     assert.equal(retained.length, 2);
     assert.ok(retained.some((article) => article.sourceId === "quiet"));
+    assert.equal(evicted.length, 1);
+  });
+
+  test("applyRetainPolicy never evicts unread or starred", () => {
+    const byUrl = {
+      "https://loud.example/1": {
+        read: true,
+        readAt: "2026-08-01T00:00:00.000Z",
+      },
+      "https://loud.example/2": {
+        read: true,
+        readAt: "2026-08-02T00:00:00.000Z",
+      },
+      "https://quiet.example/1": { read: false },
+      "https://star.example/1": {
+        read: true,
+        readAt: "2026-01-01T00:00:00.000Z",
+        starred: true,
+      },
+    };
+    const articles = [
+      {
+        url: "https://loud.example/1",
+        title: "L1",
+        date: "2026-08-10T00:00:00.000Z",
+        source: "Loud",
+        sourceId: "loud",
+        engine: "roundup",
+        summary: "",
+        tags: [],
+        category: "rss",
+        processedAt: "2026-08-10T00:00:00.000Z",
+      },
+      {
+        url: "https://loud.example/2",
+        title: "L2",
+        date: "2026-08-09T00:00:00.000Z",
+        source: "Loud",
+        sourceId: "loud",
+        engine: "roundup",
+        summary: "",
+        tags: [],
+        category: "rss",
+        processedAt: "2026-08-09T00:00:00.000Z",
+      },
+      {
+        url: "https://quiet.example/1",
+        title: "Q1",
+        date: "2026-08-01T00:00:00.000Z",
+        source: "Quiet",
+        sourceId: "quiet",
+        engine: "roundup",
+        summary: "",
+        tags: [],
+        category: "rss",
+        processedAt: "2026-08-01T00:00:00.000Z",
+      },
+      {
+        url: "https://star.example/1",
+        title: "S1",
+        date: "2026-01-01T00:00:00.000Z",
+        source: "Star",
+        sourceId: "star",
+        engine: "roundup",
+        summary: "",
+        tags: [],
+        category: "rss",
+        processedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ];
+
+    const { articles: kept, evicted } = applyRetainPolicy(articles, {
+      maxRetain: 2,
+      minPerSource: 1,
+      byUrl,
+    });
+
+    assert.ok(kept.some((article) => article.url.includes("quiet")));
+    assert.ok(kept.some((article) => article.url.includes("star")));
+    assert.equal(
+      kept.some((article) => article.url === "https://quiet.example/1"),
+      true,
+    );
+    assert.ok(evicted.every((article) => byUrl[article.url]?.read === true));
   });
 });
 

@@ -60,27 +60,52 @@ export async function writeArticlesJsonl(filePath, articles) {
 }
 
 /**
- * Keep newest articles up to maxRetain while preserving minPerSource per sourceId.
- * When per-source floors exceed maxRetain, floors win.
+ * Keep protected articles plus the newest evictable articles up to maxRetain,
+ * while preserving minPerSource per sourceId among evictable articles.
+ * When per-source floors exceed the effective evictable cap, floors win.
  *
  * @param {Article[]} articles
- * @param {{ maxRetain: number, minPerSource: number }} options
- * @returns {Article[]}
+ * @param {{
+ *   maxRetain?: number,
+ *   minPerSource?: number,
+ *   byUrl?: Record<string, { read?: boolean, starred?: boolean }>,
+ * }} options
+ * @returns {{ articles: Article[], evicted: Article[] }}
  */
 export function applyRetainPolicy(
   articles,
   {
     maxRetain = DEFAULT_MAX_RETAIN,
     minPerSource = DEFAULT_MIN_PER_SOURCE,
-  },
+    byUrl = {},
+  } = {},
 ) {
-  const sorted = [...articles].sort(
-    (a, b) => new Date(b.date) - new Date(a.date),
-  );
-  if (sorted.length <= maxRetain) {
-    return sorted;
+  const protectedArticles = [];
+  const evictable = [];
+  for (const article of articles) {
+    const state = byUrl[normalizeUrl(article.url)];
+    if (!state || state.read !== true || state.starred === true) {
+      protectedArticles.push(article);
+    } else {
+      evictable.push(article);
+    }
   }
 
+  const sortNewest = (items) =>
+    [...items].sort((a, b) => new Date(b.date) - new Date(a.date));
+  if (protectedArticles.length + evictable.length <= maxRetain) {
+    return { articles: sortNewest(articles), evicted: [] };
+  }
+
+  if (protectedArticles.length > maxRetain) {
+    return {
+      articles: sortNewest(protectedArticles),
+      evicted: sortNewest(evictable),
+    };
+  }
+
+  const effectiveCap = Math.max(0, maxRetain - protectedArticles.length);
+  const sorted = sortNewest(evictable);
   const bySource = new Map();
   for (const article of sorted) {
     const sourceId = String(article.sourceId ?? "");
@@ -97,9 +122,9 @@ export function applyRetainPolicy(
     }
   }
 
-  if (kept.size < maxRetain) {
+  if (kept.size < effectiveCap) {
     for (const article of sorted) {
-      if (kept.size >= maxRetain) {
+      if (kept.size >= effectiveCap) {
         break;
       }
       const key = normalizeUrl(article.url);
@@ -109,9 +134,12 @@ export function applyRetainPolicy(
     }
   }
 
-  return Array.from(kept.values()).sort(
-    (a, b) => new Date(b.date) - new Date(a.date),
-  );
+  const keptEvictable = Array.from(kept.values());
+  const keptSet = new Set(keptEvictable);
+  return {
+    articles: sortNewest([...protectedArticles, ...keptEvictable]),
+    evicted: evictable.filter((article) => !keptSet.has(article)),
+  };
 }
 
 /**
@@ -193,7 +221,12 @@ export function upsertArticles(
 
   let articles = Array.from(byUrl.values());
   if (applyRetain) {
-    articles = applyRetainPolicy(articles, { maxRetain, minPerSource });
+    const retained = applyRetainPolicy(articles, {
+      maxRetain,
+      minPerSource,
+      byUrl: {},
+    });
+    articles = retained.articles;
   } else {
     articles.sort((a, b) => new Date(b.date) - new Date(a.date));
   }

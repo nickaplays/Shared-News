@@ -5,8 +5,9 @@ export function pruneReadArticles(articles, byUrl, { maxAgeDays = 30, nowMs = Da
   const nextByUrl = { ...(byUrl || {}) };
   let articlesPruned = 0;
   let userStatePruned = 0;
-
+  const removed = [];
   const kept = [];
+
   for (const article of articles) {
     const key = article.url;
     const state = nextByUrl[key];
@@ -17,6 +18,7 @@ export function pruneReadArticles(articles, byUrl, { maxAgeDays = 30, nowMs = Da
       Number.isFinite(readAtMs) &&
       readAtMs < cutoff;
     if (eligible) {
+      removed.push(article);
       articlesPruned += 1;
       if (nextByUrl[key]) {
         delete nextByUrl[key];
@@ -27,5 +29,11 @@ export function pruneReadArticles(articles, byUrl, { maxAgeDays = 30, nowMs = Da
     kept.push(article);
   }
 
-  return { articles: kept, byUrl: nextByUrl, articlesPruned, userStatePruned };
+  return {
+    articles: kept,
+    byUrl: nextByUrl,
+    removed,
+    articlesPruned,
+    userStatePruned,
+  };
 }

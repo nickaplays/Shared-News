@@ -27,6 +27,8 @@ describe("pruneReadArticles", () => {
     assert.equal(result.articles.length, 1);
     assert.equal(result.articles[0].url, "https://a.example/keep");
     assert.equal(result.byUrl["https://a.example/old"], undefined);
+    assert.equal(result.removed.length, 1);
+    assert.equal(result.removed[0].url, "https://a.example/old");
   });
 
   test("keeps unread, missing readAt, and starred", () => {

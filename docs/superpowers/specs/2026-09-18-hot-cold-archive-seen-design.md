@@ -1,7 +1,7 @@
 # Shared News — Hot store + monthly cold archive + seen index
 
 > **Date:** 2026-09-18  
-> **Status:** Spec — in progress (package)
+> **Status:** Spec — implemented (package) (archive UI still deferred)
 > **App:** Shared News (package primary); Dev Launchpad + Gemini Twins (seed metadata / no archive UI yet)  
 > **Repos:**  
 > - `/Users/nickadenton/NKA/Automation/Cursor/Shared-News`  

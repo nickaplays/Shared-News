@@ -11,6 +11,34 @@ $SHARED_NEWS_DIR/personal/
 
 Each profile always resolves to `$SHARED_NEWS_DIR/<profile>/` (no parent-folder fallback).
 
+## Archive layout
+
+Each profile store may include:
+
+```
+archive/
+  YYYY-MM.jsonl
+  seen.json
+```
+
+- **Hot:** unread and starred articles stay in `articles.jsonl` / `user-state.json`.
+- **Cold:** prune (read >30d) and retain-cap evictions append rows to `archive/YYYY-MM.jsonl` and update `archive/seen.json`.
+- **Ingest:** after a feed is seeded, routine sync skips URLs already in `seen.json` and items older than 30 days.
+
+If you manually delete or corrupt a month file (or `seen.json`), rescan archives:
+
+```bash
+node repair-seen.mjs --profile=work
+node repair-seen.mjs --profile=personal
+```
+
+| Flag | Meaning |
+|------|---------|
+| `--profile=work\|personal` | Store under `$SHARED_NEWS_DIR/<profile>/` (default `work`) |
+| `--dir=/abs/store` | Absolute store path; ignores `--profile` |
+
+Prints JSON: `{ "urls": <count>, "storeDir": "<path>" }`.
+
 ## Setup
 
 ```bash

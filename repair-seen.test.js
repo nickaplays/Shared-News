@@ -23,6 +23,7 @@ test("repairSeen rebuilds after month file exists", async () => {
   const { repairSeen } = await import("./repair-seen.mjs");
   const result = await repairSeen({ newsDir });
   assert.equal(result.urls, 1);
+  assert.equal(result.storeDir, newsDir);
   const seen = await readSeen(newsDir);
   assert.ok(seen.byUrl["https://example.com/z"]);
 });

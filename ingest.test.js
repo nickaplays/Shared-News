@@ -952,6 +952,8 @@ describe("runIngest", () => {
     const articlesPath = path.join(dir, "articles.jsonl");
     const userStatePath = path.join(dir, "user-state.json");
     const oldUrl = "https://example.com/old-read";
+    const oldStateUrl =
+      "https://EXAMPLE.com/old-read/?utm_source=test#fragment";
     const keepUrl = "https://example.com/keep";
     await writeFile(
       path.join(dir, "sources.json"),
@@ -1000,7 +1002,7 @@ describe("runIngest", () => {
         {
           version: 1,
           byUrl: {
-            [oldUrl]: {
+            [oldStateUrl]: {
               read: true,
               readAt: "2026-06-01T00:00:00.000Z",
             },
@@ -1149,6 +1151,74 @@ describe("runIngest", () => {
         (article) => article.url === laterOldUrl,
       ),
       false,
+    );
+  });
+
+  test("age-gates undated seeded items but inserts them during initial seed", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "shared-news-date-gate-"));
+    const sourcesPath = path.join(dir, "sources.json");
+    await writeFile(
+      sourcesPath,
+      JSON.stringify({
+        feeds: [
+          {
+            id: "seeded-feed",
+            label: "Seeded Feed",
+            kind: "rss",
+            url: "https://feeds.example/seeded",
+            enabled: true,
+            seededAt: "2026-09-01T00:00:00.000Z",
+          },
+          {
+            id: "unseeded-feed",
+            label: "Unseeded Feed",
+            kind: "rss",
+            url: "https://feeds.example/unseeded",
+            enabled: true,
+          },
+        ],
+      }),
+    );
+
+    const result = await runIngest({
+      newsDir: dir,
+      fetchFeed: async (_url, feed) => ({
+        items:
+          feed.id === "seeded-feed"
+            ? [
+                {
+                  title: "Missing date",
+                  link: "https://example.com/missing-date",
+                },
+                {
+                  title: "Invalid date",
+                  link: "https://example.com/invalid-seeded-date",
+                  isoDate: "not-a-date",
+                },
+              ]
+            : [
+                {
+                  title: "Initial invalid date",
+                  link: "https://example.com/invalid-unseeded-date",
+                  pubDate: "not-a-date",
+                },
+              ],
+      }),
+      nowMs: Date.parse("2026-09-18T00:00:00.000Z"),
+    });
+
+    assert.equal(result.articlesSkippedAge, 2);
+    assert.equal(result.articlesInserted, 1);
+    const articles = await readArticlesJsonl(path.join(dir, "articles.jsonl"));
+    assert.deepEqual(
+      articles.map((article) => article.url),
+      ["https://example.com/invalid-unseeded-date"],
+    );
+    assert.equal(articles[0].date, "");
+    const sources = JSON.parse(await readFile(sourcesPath, "utf8"));
+    assert.equal(
+      sources.feeds.find((feed) => feed.id === "unseeded-feed").seededAt,
+      "2026-09-18T00:00:00.000Z",
     );
   });
 

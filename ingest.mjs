@@ -18,6 +18,7 @@ import {
   moveArticlesToArchive,
   readSeen,
 } from "./archive-store.js";
+import { normalizeUrl } from "./normalize-url.js";
 import { pruneReadArticles } from "./prune-read.js";
 import { resolveNewsDir } from "./resolve-news-dir.js";
 
@@ -87,10 +88,13 @@ async function readUserStateMtime(filePath) {
   }
 }
 
-function itemDate(item, fallback) {
+function itemDate(item) {
   const value = item.isoDate ?? item.pubDate ?? item.date;
-  const date = value ? new Date(value) : new Date(fallback);
-  return Number.isNaN(date.getTime()) ? fallback : date.toISOString();
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
 function toArticle(item, feed, processedAt) {
@@ -102,7 +106,7 @@ function toArticle(item, feed, processedAt) {
   const article = {
     url: String(url),
     title: String(item.title ?? "Untitled"),
-    date: itemDate(item, processedAt),
+    date: itemDate(item),
     source: String(feed.label ?? feed.id),
     sourceId: String(feed.id),
     engine: String(feed.engine ?? "roundup"),
@@ -295,6 +299,12 @@ export async function runIngest({
         userState.byUrl && typeof userState.byUrl === "object"
           ? userState.byUrl
           : {};
+      byUrl = Object.fromEntries(
+        Object.entries(byUrl).map(([url, state]) => [
+          normalizeUrl(url),
+          state,
+        ]),
+      );
       const archivedAt = startedAt;
       const retained = applyRetainPolicy(articles, {
         maxRetain,

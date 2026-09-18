@@ -1,4 +1,8 @@
 import { readFile, writeFile } from "node:fs/promises";
+import {
+  DEFAULT_INSERT_MAX_AGE_DAYS,
+  shouldInsertArticle,
+} from "./article-insert-gate.js";
 import { preferLargeImageUrl } from "./article-media.js";
 import { normalizeUrl } from "./normalize-url.js";
 
@@ -150,8 +154,19 @@ export function applyRetainPolicy(
  *   maxRetain?: number,
  *   minPerSource?: number,
  *   applyRetain?: boolean,
+ *   seenByUrl?: Record<string, unknown>,
+ *   seeded?: boolean,
+ *   maxAgeDays?: number,
+ *   nowMs?: number,
  * }} limits
- * @returns {{ articles: Article[], inserted: number, updated: number, considered: number }}
+ * @returns {{
+ *   articles: Article[],
+ *   inserted: number,
+ *   updated: number,
+ *   considered: number,
+ *   skippedSeen: number,
+ *   skippedAge: number,
+ * }}
  */
 export function upsertArticles(
   existing,
@@ -161,6 +176,10 @@ export function upsertArticles(
     maxRetain = DEFAULT_MAX_RETAIN,
     minPerSource = DEFAULT_MIN_PER_SOURCE,
     applyRetain = true,
+    seenByUrl = {},
+    seeded = false,
+    maxAgeDays = DEFAULT_INSERT_MAX_AGE_DAYS,
+    nowMs = Date.now(),
   },
 ) {
   const insertLimit =
@@ -174,6 +193,8 @@ export function upsertArticles(
 
   let inserted = 0;
   let updated = 0;
+  let skippedSeen = 0;
+  let skippedAge = 0;
   const considered = incoming.length;
 
   for (const article of incoming) {
@@ -208,6 +229,20 @@ export function upsertArticles(
       }
       continue;
     }
+    const gate = shouldInsertArticle(article, {
+      seenByUrl,
+      seeded,
+      maxAgeDays,
+      nowMs,
+    });
+    if (!gate.insert) {
+      if (gate.reason === "seen") {
+        skippedSeen += 1;
+      } else if (gate.reason === "age") {
+        skippedAge += 1;
+      }
+      continue;
+    }
     if (inserted >= insertLimit) {
       continue;
     }
@@ -231,5 +266,12 @@ export function upsertArticles(
     articles.sort((a, b) => new Date(b.date) - new Date(a.date));
   }
 
-  return { articles, inserted, updated, considered };
+  return {
+    articles,
+    inserted,
+    updated,
+    considered,
+    skippedSeen,
+    skippedAge,
+  };
 }

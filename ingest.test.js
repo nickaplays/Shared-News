@@ -259,6 +259,60 @@ describe("upsertArticles", () => {
     assert.equal(result.articles.length, 8);
   });
 
+  test("upsertArticles skips seen and age-gated urls", () => {
+    const existing = [];
+    const incoming = [
+      {
+        url: "https://example.com/seen",
+        title: "S",
+        date: "2026-09-17T00:00:00.000Z",
+        source: "T",
+        sourceId: "t",
+        engine: "roundup",
+        summary: "",
+        tags: [],
+        category: "rss",
+        processedAt: "2026-09-18T00:00:00.000Z",
+      },
+      {
+        url: "https://example.com/old",
+        title: "O",
+        date: "2026-01-01T00:00:00.000Z",
+        source: "T",
+        sourceId: "t",
+        engine: "roundup",
+        summary: "",
+        tags: [],
+        category: "rss",
+        processedAt: "2026-09-18T00:00:00.000Z",
+      },
+      {
+        url: "https://example.com/new",
+        title: "N",
+        date: "2026-09-17T00:00:00.000Z",
+        source: "T",
+        sourceId: "t",
+        engine: "roundup",
+        summary: "",
+        tags: [],
+        category: "rss",
+        processedAt: "2026-09-18T00:00:00.000Z",
+      },
+    ];
+    const result = upsertArticles(existing, incoming, {
+      applyRetain: false,
+      seeded: true,
+      nowMs: Date.parse("2026-09-18T00:00:00.000Z"),
+      seenByUrl: {
+        "https://example.com/seen": { archiveFile: "2026-08.jsonl" },
+      },
+    });
+    assert.equal(result.inserted, 1);
+    assert.equal(result.skippedSeen, 1);
+    assert.equal(result.skippedAge, 1);
+    assert.equal(result.articles[0].url, "https://example.com/new");
+  });
+
   test("applyRetainPolicy keeps a per-source floor", () => {
     const articles = [
       {

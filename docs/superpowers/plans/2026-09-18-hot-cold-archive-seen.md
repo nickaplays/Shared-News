@@ -144,28 +144,9 @@ describe("archive-store", () => {
   test("rebuildSeenFromArchives rescans month files", async () => {
     const newsDir = await mkdtemp(path.join(tmpdir(), "sn-rebuild-"));
     await ensureArchiveLayout(newsDir);
-    const archiveDir = path.join(newsDir, "archive");
+    const dir = path.join(newsDir, "archive");
     await writeFile(
-      path.join(archiveDir, "2026-08.jsonl"),
-      `${JSON.stringify({
-        url: "https://example.com/old",
-        archivedAt: "2026-08-01T00:00:00.000Z",
-      })}\n`,
-    );
-    await writeSeenEmptyThenCorrupt(newsDir); // see step note below
-  });
-});
-```
-
-For the rebuild test, replace the placeholder helper with inline writes:
-
-```js
-  test("rebuildSeenFromArchives rescans month files", async () => {
-    const newsDir = await mkdtemp(path.join(tmpdir(), "sn-rebuild-"));
-    await ensureArchiveLayout(newsDir);
-    const archiveDir = path.join(newsDir, "archive");
-    await writeFile(
-      path.join(archiveDir, "2026-08.jsonl"),
+      path.join(dir, "2026-08.jsonl"),
       `${JSON.stringify({
         url: "https://example.com/old",
         archivedAt: "2026-08-01T00:00:00.000Z",
@@ -176,8 +157,12 @@ For the rebuild test, replace the placeholder helper with inline writes:
       `${JSON.stringify({ version: 1, updatedAt: null, byUrl: {} }, null, 2)}\n`,
     );
     const seen = await rebuildSeenFromArchives(newsDir);
-    assert.equal(seen.byUrl["https://example.com/old"].archiveFile, "2026-08.jsonl");
+    assert.equal(
+      seen.byUrl["https://example.com/old"].archiveFile,
+      "2026-08.jsonl",
+    );
   });
+});
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**

@@ -49,9 +49,12 @@ npm install
 
 ```bash
 export SHARED_NEWS_DIR="/Users/nickadenton/NKA/Obsidian/Automation-Projects/Nicka-Notes/shared/news"
+export YOUTUBE_API_KEY="…"   # required for kind=youtube feeds (Data API)
 node ingest.mjs --profile=work
 node ingest.mjs --profile=personal
 ```
+
+YouTube sources (`kind: "youtube"`) are fetched via the **YouTube Data API** (uploads playlist), not Atom RSS. Non-YouTube feeds use HTTP RSS/Atom with up to 3 retries on transient errors. `run-ingest.sh` loads `YOUTUBE_API_KEY` from the environment or from Dev-Launcher’s `.env`.
 
 | Flag | Meaning |
 |------|---------|

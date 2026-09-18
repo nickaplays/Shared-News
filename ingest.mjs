@@ -18,9 +18,14 @@ import {
   moveArticlesToArchive,
   readSeen,
 } from "./archive-store.js";
+import { withRetries } from "./http-retry.js";
 import { normalizeUrl } from "./normalize-url.js";
 import { pruneReadArticles } from "./prune-read.js";
 import { resolveNewsDir } from "./resolve-news-dir.js";
+import {
+  channelIdFromFeedUrl,
+  fetchYoutubeFeedItems,
+} from "./youtube-feed.js";
 
 const MAX_SUMMARY_LENGTH = 1500;
 const DEFAULT_FEED_TIMEOUT_MS = 20_000;
@@ -63,7 +68,7 @@ export function parseIngestArgs(argv) {
   return args;
 }
 
-async function fetchDefaultFeed(url, _feed, { signal } = {}) {
+async function fetchHttpFeedOnce(url, { signal } = {}) {
   const response = await fetch(url, {
     headers: {
       Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml",
@@ -75,6 +80,38 @@ async function fetchDefaultFeed(url, _feed, { signal } = {}) {
     throw new Error(`Status code ${response.status}`);
   }
   return parser.parseString(await response.text());
+}
+
+/**
+ * Default feed loader: YouTube via Data API; other kinds via HTTP RSS with retries.
+ *
+ * @param {string} url
+ * @param {object} feed
+ * @param {{ signal?: AbortSignal, youtubeApiKey?: string, fetchYoutube?: typeof fetchYoutubeFeedItems }} [options]
+ */
+export async function fetchDefaultFeed(
+  url,
+  feed,
+  {
+    signal,
+    youtubeApiKey = process.env.YOUTUBE_API_KEY,
+    fetchYoutube = fetchYoutubeFeedItems,
+  } = {},
+) {
+  if (feed?.kind === "youtube") {
+    const channelId = channelIdFromFeedUrl(url);
+    if (!channelId) {
+      throw new Error(`YouTube feed is missing channel_id: ${url}`);
+    }
+    return fetchYoutube({
+      channelId,
+      apiKey: youtubeApiKey,
+      signal,
+    });
+  }
+  return withRetries(() => fetchHttpFeedOnce(url, { signal }), {
+    delaysMs: [250, 500, 1000],
+  });
 }
 
 async function readUserStateMtime(filePath) {

@@ -10,7 +10,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { parseIngestArgs, runIngest } from "./ingest.mjs";
+import { parseIngestArgs, runIngest, fetchDefaultFeed } from "./ingest.mjs";
 import { resolveNewsDir } from "./resolve-news-dir.js";
 import { normalizeUrl } from "./normalize-url.js";
 import {
@@ -19,6 +19,46 @@ import {
   writeArticlesJsonl,
   upsertArticles,
 } from "./articles-store.js";
+
+describe("fetchDefaultFeed", () => {
+  test("routes youtube feeds through the Data API helper", async () => {
+    const calls = [];
+    const result = await fetchDefaultFeed(
+      "https://www.youtube.com/feeds/videos.xml?channel_id=UCO1Ewa1OnZ87iNTVxqxLgwg",
+      { id: "youtube-emma-shaye", kind: "youtube" },
+      {
+        youtubeApiKey: "k",
+        fetchYoutube: async (opts) => {
+          calls.push(opts);
+          return {
+            items: [
+              {
+                title: "Hi",
+                link: "https://www.youtube.com/watch?v=1",
+                isoDate: "2026-09-01T00:00:00.000Z",
+              },
+            ],
+          };
+        },
+      },
+    );
+    assert.equal(result.items.length, 1);
+    assert.equal(calls[0].channelId, "UCO1Ewa1OnZ87iNTVxqxLgwg");
+    assert.equal(calls[0].apiKey, "k");
+  });
+
+  test("fails youtube feeds when API key is missing", async () => {
+    await assert.rejects(
+      () =>
+        fetchDefaultFeed(
+          "https://www.youtube.com/feeds/videos.xml?channel_id=UCO1Ewa1OnZ87iNTVxqxLgwg",
+          { id: "youtube-emma-shaye", kind: "youtube" },
+          { youtubeApiKey: "" },
+        ),
+      /YOUTUBE_API_KEY is not set/,
+    );
+  });
+});
 
 describe("normalizeUrl", () => {
   test("strips fragment and trailing slash", () => {

@@ -8,6 +8,22 @@ export SHARED_NEWS_DIR="${SHARED_NEWS_DIR:-/Users/nickadenton/NKA/Obsidian/Autom
 NODE="${NODE_BIN:-/opt/homebrew/bin/node}"
 INGEST="/Users/nickadenton/NKA/Automation/Cursor/Shared-News/ingest.mjs"
 LOG_DIR="${HOME}/Library/Logs/shared-news"
+# YouTube Data API key (same as Dev-Launcher). Prefer env; else load from Dev-Launcher .env.
+if [ -z "${YOUTUBE_API_KEY:-}" ]; then
+  DEV_LAUNCHER_ENV="${DEV_LAUNCHER_ENV:-/Users/nickadenton/NKA/Automation/Cursor/Dev-Launcher/.env}"
+  if [ -f "$DEV_LAUNCHER_ENV" ]; then
+    raw="$(grep -E '^YOUTUBE_API_KEY=' "$DEV_LAUNCHER_ENV" | head -n 1 || true)"
+    if [ -n "$raw" ]; then
+      export YOUTUBE_API_KEY="${raw#YOUTUBE_API_KEY=}"
+      # Strip optional surrounding quotes
+      YOUTUBE_API_KEY="${YOUTUBE_API_KEY%\"}"
+      YOUTUBE_API_KEY="${YOUTUBE_API_KEY#\"}"
+      YOUTUBE_API_KEY="${YOUTUBE_API_KEY%\'}"
+      YOUTUBE_API_KEY="${YOUTUBE_API_KEY#\'}"
+      export YOUTUBE_API_KEY
+    fi
+  fi
+fi
 mkdir -p "$LOG_DIR" || exit 1
 
 {
